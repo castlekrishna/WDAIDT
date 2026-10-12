@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Why Did AI Do That?</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Why Did AI Do That?</h1>
+      <p class="subtitle">Day 1 &middot; manual <strong>Why?</strong> &middot; ChatGPT only</p>
+    </div>
+    <label class="auto-toggle" title="Auto Analyze lands on Day 3 (V0.3). Toggle is saved but not active in Day 1.">
+      <span>Auto</span>
+      <input type="checkbox" id="autoToggle" />
+      <span class="pill" aria-hidden="true"></span>
+    </label>
+  </header>
+
+  <main>
+    <section class="card controls">
+      <div class="row">
+        <button id="whyBtn" class="primary">Why?</button>
+        <button id="retryBtn" class="ghost" hidden>Retry</button>
+      </div>
+      <p id="backendLine" class="muted">Backend: checking&hellip;</p>
+      <p id="statusLine" class="status" role="status">Open a ChatGPT conversation, then click Why?</p>
+    </section>
+
+    <section class="card" id="captureCard" hidden>
+      <h2>Captured interaction</h2>
+      <h3>Prompt</h3>
+      <p id="promptPreview" class="preview"></p>
+      <h3>Response</h3>
+      <p id="responsePreview" class="preview"></p>
+    </section>
+
+    <section class="card" id="resultCard" hidden>
+      <h2>Analysis</h2>
+      <p id="modeBadge" class="badge" hidden></p>
+      <h3>Why this answer?</h3>
+      <p id="whyText"></p>
+      <h3>Influences</h3>
+      <ul id="influencesList"></ul>
+      <h3>Assumptions</h3>
+      <ul id="assumptionsList"></ul>
+      <h3>What could change it?</h3>
+      <ul id="changeList"></ul>
+    </section>
+
+    <section class="card error" id="errorCard" hidden>
+      <h2>Something went wrong</h2>
+      <p id="errorText"></p>
+    </section>
+  </main>
+
+  <footer class="muted small">
+    Day 1 scope: capture + manual Why? only. No history, no accounts.
+  </footer>
+
+  <script src="../shared/messages.js"></script>
+  <script src="../shared/config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

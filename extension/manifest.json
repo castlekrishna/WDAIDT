@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Why Did AI Do That?",
+  "short_name": "WDAIDT",
+  "version": "0.1.0",
+  "description": "Day 1 (V0.1): capture the latest ChatGPT prompt/response and explain it from the sidebar. Manual Why? only.",
+  "minimum_chrome_version": "114",
+  "icons": {},
+  "action": {
+    "default_title": "Why Did AI Do That?"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting"],
+  "host_permissions": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+      "js": ["src/content/chatgpt.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
