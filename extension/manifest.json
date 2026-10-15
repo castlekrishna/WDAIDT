@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "0.1.0",
-  "description": "Day 1 (V0.1): capture the latest ChatGPT prompt/response and explain it from the sidebar. Manual Why? only.",
+  "version": "0.3.0",
+  "description": "V0.2: robust ChatGPT prompt/response capture with ordered role pairing and staged sidebar errors. Manual Why? only.",
   "minimum_chrome_version": "114",
   "icons": {},
   "action": {
@@ -20,7 +20,7 @@
   "content_scripts": [
     {
       "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
-      "js": ["src/content/chatgpt.js"],
+      "js": ["src/shared/messages.js", "src/content/chatgpt.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

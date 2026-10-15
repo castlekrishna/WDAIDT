@@ -1,7 +1,7 @@
-/* Day 1 (V0.1) side-panel controller.
+/* WDAIDT side-panel controller (V0.2).
  * Only this layer talks to the backend. Content script only captures.
- * If the backend is unreachable (expected on Day 1 before Krishna's mock
- * is live), we show a clearly-labelled local preview so the UI is testable.
+ * Capture errors and analysis errors are reported separately so the user
+ * can tell whether ChatGPT text was found and whether the backend failed.
  */
 (() => {
   'use strict';
@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
 
   const els = {};
-  ['whyBtn', 'retryBtn', 'backendLine', 'statusLine', 'captureCard',
+  ['whyBtn', 'retryBtn', 'diagBtn', 'backendLine', 'statusLine', 'captureCard',
    'promptPreview', 'responsePreview', 'resultCard', 'modeBadge', 'whyText',
    'influencesList', 'assumptionsList', 'changeList', 'errorCard',
    'errorText', 'autoToggle'].forEach((id) => { els[id] = $(id); });
@@ -18,6 +18,14 @@
   const MSGS = () => globalThis.WDAIDT_MESSAGES || {};
 
   let lastCapture = null; // { prompt, response } for Retry
+  let lastDiag = null; // diagnostics payload for the Copy diagnostics button
+
+  function fpSummary(fp) {
+    if (!fp) return 'n/a';
+    const n = (v) => (v == null ? '?' : v);
+    return `role=${n(fp.roleAttr)} mid=${n(fp.messageId)} turns=${n(fp.turnTestids)} ` +
+      `articles=${n(fp.articles)} shadow=${n(fp.shadowRoots)} elems=${n(fp.elements)}`;
+  }
 
   function trimForBackend(text, max) {
     const s = (text || '').trim();
@@ -43,6 +51,28 @@
     els.resultCard.hidden = true;
     els.errorCard.hidden = true;
     els.modeBadge.hidden = true;
+    if (els.diagBtn) els.diagBtn.hidden = true;
+    lastDiag = null;
+  }
+
+  async function copyDiagnostics() {
+    if (!lastDiag) return;
+    const text = JSON.stringify(lastDiag, null, 2);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      setStatus('Diagnostics copied — paste it in the project chat.');
+    } catch {
+      setStatus('Could not copy. Select the error text manually.');
+    }
   }
 
   async function getActiveTab() {
@@ -54,24 +84,112 @@
     return !!url && (url.includes('chatgpt.com') || url.includes('chat.openai.com'));
   }
 
+  async function sendGetLatest(tabId, type) {
+    try {
+      const res = await chrome.tabs.sendMessage(tabId, { type });
+      return { sent: true, res };
+    } catch (e) {
+      return { sent: false, error: e };
+    }
+  }
+
+  // If the tab was open before the extension was (re)loaded, the static
+  // content script may be missing. Inject it once, then retry.
+  async function ensureContentScript(tabId) {
+    try {
+      if (chrome && chrome.scripting && chrome.scripting.executeScript) {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['src/shared/messages.js', 'src/content/chatgpt.js']
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        return true;
+      }
+    } catch {
+      /* injection unavailable or blocked — fall through */
+    }
+    return false;
+  }
+
   async function captureLatest() {
     const tab = await getActiveTab();
-    if (!tab || !tab.id) throw new Error('No active tab found.');
+    if (!tab || !tab.id) {
+      const err = new Error('No active browser tab found. Click the ChatGPT tab, then press Why? again.');
+      err.code = 'NO_ACTIVE_TAB';
+      err.stage = 'capture';
+      throw err;
+    }
     if (!isChatGPTUrl(tab.url || '')) {
-      throw new Error('Open a ChatGPT conversation (chatgpt.com) in the active tab, then click Why?');
+      const err = new Error('Open a ChatGPT conversation (chatgpt.com) in the active tab, then click Why?');
+      err.code = 'NOT_CHATGPT_TAB';
+      err.stage = 'capture';
+      throw err;
     }
     const type = (MSGS().GET_LATEST) || 'WDAIDT_GET_LATEST';
-    let res;
-    try {
-      res = await chrome.tabs.sendMessage(tab.id, { type });
-    } catch {
-      throw new Error('Could not reach the ChatGPT tab. Reload the ChatGPT page and try again.');
+    let attempt = await sendGetLatest(tab.id, type);
+    if (!attempt.sent) {
+      const injected = await ensureContentScript(tab.id);
+      if (injected) attempt = await sendGetLatest(tab.id, type);
     }
-    if (!res || res.ok === false) throw new Error('Capture failed on the ChatGPT page.');
-    if (!res.prompt && !res.response) {
-      throw new Error('No conversation found on this page yet. Ask ChatGPT something first.');
+    if (!attempt.sent) {
+      const err = new Error('WDAIDT could not talk to the ChatGPT tab (content script missing). Reload the ChatGPT page, then press Why? again.');
+      err.code = 'CONTENT_SCRIPT_MISSING';
+      err.stage = 'capture';
+      throw err;
     }
-    return { prompt: res.prompt || '', response: res.response || '' };
+    const res = attempt.res;
+    if (!res || res.ok === false) {
+      const err = new Error('The ChatGPT page reported a capture failure. Reload the ChatGPT page and try again.');
+      err.code = 'CAPTURE_FAILED';
+      err.stage = 'capture';
+      throw err;
+    }
+    const prompt = (res.prompt || '').trim();
+    const response = (res.response || '').trim();
+    const meta = {
+      strategy: res.strategy || 'unknown',
+      userCount: res.userCount || 0,
+      assistantCount: res.assistantCount || 0,
+      paired: !!res.paired
+    };
+    if (!prompt && !response) {
+      const err = new Error(
+        `No readable ChatGPT messages detected (strategy: ${meta.strategy}, ` +
+        `users: ${meta.userCount}, assistants: ${meta.assistantCount}, ` +
+        `page: ${fpSummary(res.fingerprint)}). ` +
+        'Make sure a conversation with visible messages is open, wait for streaming to finish, then press Why?. ' +
+        'If this repeats, press Copy diagnostics and share the output.'
+      );
+      err.code = 'CAPTURE_EMPTY';
+      err.stage = 'capture';
+      err.details = meta;
+      lastDiag = {
+        error: err.code,
+        message: err.message,
+        url: res.url || (tab && tab.url) || '',
+        strategy: meta.strategy,
+        userCount: meta.userCount,
+        assistantCount: meta.assistantCount,
+        fingerprint: res.fingerprint || null
+      };
+      if (els.diagBtn) els.diagBtn.hidden = false;
+      throw err;
+    }
+    if (prompt && !response) {
+      const err = new Error('Your latest message has no AI reply yet (or the reply is still streaming). Wait for ChatGPT to finish, then press Why?.');
+      err.code = 'RESPONSE_PENDING';
+      err.stage = 'capture';
+      err.details = meta;
+      throw err;
+    }
+    if (!prompt && response) {
+      const err = new Error('Found an AI reply but no readable user message above it. Scroll to the latest exchange and press Why? again.');
+      err.code = 'PROMPT_MISSING';
+      err.stage = 'capture';
+      err.details = meta;
+      throw err;
+    }
+    return { prompt, response, meta };
   }
 
   async function postAnalyze(prompt, response) {
@@ -207,6 +325,7 @@
       try {
         data = await postAnalyze(cap.prompt, cap.response);
       } catch (backendErr) {
+        if (backendErr) backendErr.stage = backendErr.stage || 'analysis';
         if (backendErr && backendErr.code === 'NETWORK') {
           data = localPreviewAnalysis(cap.prompt, cap.response);
         } else {
@@ -217,7 +336,7 @@
       setStatus('Done.');
     } catch (e) {
       showError((e && e.message) || 'Analysis failed. Please try again.');
-      setStatus('Failed.');
+      setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
     } finally {
       els.whyBtn.disabled = false;
     }
@@ -257,6 +376,7 @@
 
   els.whyBtn.addEventListener('click', runWhy);
   els.retryBtn.addEventListener('click', runWhy);
+  if (els.diagBtn) els.diagBtn.addEventListener('click', copyDiagnostics);
   checkBackend();
   initAutoToggle();
 })();

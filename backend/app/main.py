@@ -28,11 +28,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS configuration per API agreement
+# CORS configuration per API agreement.
+# Note: the extension uses plain JSON POSTs with no cookies/auth (V1 has no
+# accounts), so credentials are disabled. A wildcard origin combined with
+# allow_credentials=True is rejected by browsers and can break preflighted
+# POSTs from chrome-extension:// origins.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows chrome-extension:// origins and localhost
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
