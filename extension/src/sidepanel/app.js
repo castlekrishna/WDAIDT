@@ -41,6 +41,16 @@
 
   function setStatus(msg) { els.statusLine.textContent = msg; }
 
+  // Structured diagnostics: stage outcomes + field lengths only. Never logs
+  // prompt/response text, URLs, or anything identifying the conversation.
+  function logEvent(event, info) {
+    try {
+      console.debug('[WDAIDT]', JSON.stringify({ event, ...(info || {}) }));
+    } catch {
+      /* logging must never break the flow */
+    }
+  }
+
   function showError(msg) {
     els.errorCard.hidden = false;
     els.errorText.textContent = msg;
@@ -180,6 +190,8 @@
       err.code = 'RESPONSE_PENDING';
       err.stage = 'capture';
       err.details = meta;
+      err.partial = { prompt, response: '' };
+      logEvent('capture_partial', { code: err.code, promptLen: prompt.length });
       throw err;
     }
     if (!prompt && response) {
@@ -187,12 +199,22 @@
       err.code = 'PROMPT_MISSING';
       err.stage = 'capture';
       err.details = meta;
+      err.partial = { prompt: '', response };
+      logEvent('capture_partial', { code: err.code, responseLen: response.length });
       throw err;
     }
+    logEvent('capture_ok', {
+      strategy: meta.strategy,
+      userCount: meta.userCount,
+      assistantCount: meta.assistantCount,
+      paired: meta.paired,
+      promptLen: prompt.length,
+      responseLen: response.length
+    });
     return { prompt, response, meta };
   }
 
-  async function postAnalyze(prompt, response) {
+  async function postAnalyze(prompt, response, requestId) {
     const cfg = CFG();
     const base = cfg.BACKEND_BASE_URL || 'http://localhost:8000';
     const url = (globalThis.wdaidtAnalyzeUrl
@@ -203,7 +225,7 @@
     const body = {
       prompt: trimForBackend(prompt, maxP),
       response: trimForBackend(response, maxR),
-      request_id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))
+      request_id: requestId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))
     };
     if (!body.prompt || !body.response) {
       const err = new Error('Missing prompt or response.');
@@ -258,27 +280,6 @@
     }
   }
 
-  // Clearly-labelled Day-1 fallback so manual Why? is demoable with no backend.
-  function localPreviewAnalysis(prompt, response) {
-    const topic = (prompt || '').split('\n')[0].slice(0, 120) || 'this question';
-    return {
-      _localPreview: true,
-      why: `The response appears to answer "${topic}" directly from the wording of your prompt. (Local Day-1 preview — connect the backend for Gemini analysis.)`,
-      influences: [
-        'The wording and scope of your latest prompt appear to have shaped the answer most.',
-        response.length > 800
-          ? 'The long response appears to cover several sub-points, not a single fact.'
-          : 'The short response appears to target the single point you asked about.'
-      ],
-      assumptions: [
-        'Your latest message seems to contain the full context needed.'
-      ],
-      what_could_change: [
-        'Adding your goal, constraints, or background could change the recommendation.'
-      ]
-    };
-  }
-
   function renderList(ul, items) {
     ul.textContent = '';
     (items || []).forEach((t) => {
@@ -299,13 +300,57 @@
     renderList(els.influencesList, data.influences);
     renderList(els.assumptionsList, data.assumptions);
     renderList(els.changeList, data.what_could_change);
-    if (data._localPreview) {
-      els.modeBadge.hidden = false;
-      els.modeBadge.textContent = 'Local preview — backend not connected';
-    } else {
-      els.modeBadge.hidden = true;
-    }
+    els.modeBadge.hidden = true;
     els.resultCard.hidden = false;
+  }
+
+  let latestRequestId = null; // newest analysis request; older responses are dropped
+  let autoTimer = null; // trailing debounce for auto triggers
+  let lastAutoHash = ''; // dedupe key for the last auto-analyzed exchange
+
+  function isStale(data) {
+    try {
+      if (typeof globalThis.wdaidtIsStaleResult === 'function') {
+        return globalThis.wdaidtIsStaleResult(latestRequestId, data);
+      }
+    } catch {
+      /* fall through */
+    }
+    return false;
+  }
+
+  function newRequestId() {
+    try {
+      if (crypto.randomUUID) return crypto.randomUUID();
+    } catch {
+      /* fall through */
+    }
+    return String(Date.now());
+  }
+
+  async function analyzeCapture(cap, requestId) {
+    setStatus('Analyzing…');
+    logEvent('analyze_start', {
+      requestId,
+      promptLen: (cap.prompt || '').length,
+      responseLen: (cap.response || '').length
+    });
+    let data;
+    try {
+      data = await postAnalyze(cap.prompt, cap.response, requestId);
+    } catch (backendErr) {
+      if (backendErr) backendErr.stage = backendErr.stage || 'analysis';
+      logEvent('analyze_error', { code: (backendErr && backendErr.code) || 'UNKNOWN' });
+      throw backendErr;
+    }
+    if (data && isStale(data)) {
+      logEvent('analyze_stale_dropped', { requestId: data.request_id });
+      setStatus('Skipped a stale result — a newer analysis is already running.');
+      return;
+    }
+    logEvent('analyze_ok', { requestId: (data && data.request_id) || requestId });
+    renderResult(data);
+    setStatus('Done.');
   }
 
   async function runWhy() {
@@ -320,25 +365,78 @@
       els.promptPreview.textContent = preview(cap.prompt);
       els.responsePreview.textContent = preview(cap.response);
 
-      setStatus('Analyzing…');
-      let data;
-      try {
-        data = await postAnalyze(cap.prompt, cap.response);
-      } catch (backendErr) {
-        if (backendErr) backendErr.stage = backendErr.stage || 'analysis';
-        if (backendErr && backendErr.code === 'NETWORK') {
-          data = localPreviewAnalysis(cap.prompt, cap.response);
-        } else {
-          throw backendErr;
-        }
-      }
-      renderResult(data);
-      setStatus('Done.');
+      const requestId = newRequestId();
+      latestRequestId = requestId;
+      await analyzeCapture(cap, requestId);
     } catch (e) {
+      if (e && e.stage === 'capture') {
+        logEvent('capture_error', { code: (e && e.code) || 'UNKNOWN' });
+      }
+      if (e && e.partial) {
+        // Partial capture: show what was found, mark the missing side
+        // explicitly instead of substituting one field with the other.
+        els.captureCard.hidden = false;
+        els.promptPreview.textContent = e.partial.prompt
+          ? preview(e.partial.prompt)
+          : '(not captured)';
+        els.responsePreview.textContent = e.partial.response
+          ? preview(e.partial.response)
+          : '(not captured)';
+      }
       showError((e && e.message) || 'Analysis failed. Please try again.');
       setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
     } finally {
       els.whyBtn.disabled = false;
+    }
+  }
+
+  // Auto Analyze: content script reports a newly settled exchange. Debounce
+  // rapid triggers, skip repeats of the same exchange, then analyze with the
+  // same pipeline (and stale guard) as manual Why?.
+  function autoHash(prompt, response) {
+    return `${(prompt || '').length}:${(response || '').length}:` +
+      `${(prompt || '').slice(-120)}|${(response || '').slice(-120)}`;
+  }
+
+  async function runAuto(prompt, response) {
+    if (!els.autoToggle.checked) return;
+    const h = autoHash(prompt, response);
+    if (h === lastAutoHash) return;
+    lastAutoHash = h;
+    clearResult();
+    try {
+      const cap = { prompt: (prompt || '').trim(), response: (response || '').trim() };
+      if (!cap.prompt || !cap.response) return;
+      lastCapture = cap;
+      els.captureCard.hidden = false;
+      els.promptPreview.textContent = preview(cap.prompt);
+      els.responsePreview.textContent = preview(cap.response);
+      const requestId = newRequestId();
+      latestRequestId = requestId;
+      await analyzeCapture(cap, requestId);
+    } catch (e) {
+      showError((e && e.message) || 'Analysis failed. Please try again.');
+      setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
+    }
+  }
+
+  function onRuntimeMessage(message) {
+    if (!message || typeof message.type !== 'string') return;
+    const types = MSGS();
+    if (message.type !== types.AUTO_ANALYZE_TRIGGER &&
+        message.type !== 'WDAIDT_AUTO_ANALYZE_TRIGGER') return;
+    try {
+      if (autoTimer) clearTimeout(autoTimer);
+    } catch {
+      /* ignore */
+    }
+    try {
+      autoTimer = setTimeout(() => {
+        autoTimer = null;
+        runAuto(message.prompt, message.response);
+      }, 500);
+    } catch {
+      /* timers unavailable */
     }
   }
 
@@ -355,7 +453,28 @@
         ? `Backend: reachable at ${base}`
         : `Backend: reachable but unhealthy (${res.status})`;
     } catch {
-      els.backendLine.textContent = `Backend: not reachable at ${base} — Day-1 local preview mode`;
+      els.backendLine.textContent = `Backend: not reachable at ${base} — start it to enable analysis`;
+    }
+  }
+
+  async function notifyTabsAuto(on) {
+    const types = MSGS();
+    const type = on
+      ? (types.AUTO_ANALYZE_ON || 'WDAIDT_AUTO_ANALYZE_ON')
+      : (types.AUTO_ANALYZE_OFF || 'WDAIDT_AUTO_ANALYZE_OFF');
+    try {
+      const tabs = await chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] });
+      for (const t of tabs || []) {
+        if (t && t.id != null) {
+          try {
+            await chrome.tabs.sendMessage(t.id, { type });
+          } catch {
+            /* tab without content script — watcher reads storage on load */
+          }
+        }
+      }
+    } catch {
+      /* tabs API unavailable — content scripts fall back to storage */
     }
   }
 
@@ -368,10 +487,22 @@
       try {
         await chrome.storage.local.set({ wdaidt_auto_analyze: els.autoToggle.checked });
       } catch { /* non-fatal */ }
-      if (els.autoToggle.checked) {
-        setStatus('Auto Analyze arrives on Day 3 (V0.3). Saved ON, but manual Why? is used in Day 1.');
-      }
+      notifyTabsAuto(els.autoToggle.checked);
+      setStatus(els.autoToggle.checked
+        ? 'Auto Analyze ON — new ChatGPT replies will be analyzed automatically.'
+        : 'Auto Analyze OFF — press Why? to analyze manually.');
     });
+  }
+
+  try {
+    if (chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
+      chrome.runtime.onMessage.addListener((message) => {
+        onRuntimeMessage(message);
+        return undefined;
+      });
+    }
+  } catch {
+    /* non-fatal */
   }
 
   els.whyBtn.addEventListener('click', runWhy);

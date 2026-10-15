@@ -21,7 +21,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const TYPE_GET_LATEST = 'WDAIDT_GET_LATEST';
   const TYPE_PING = 'WDAIDT_PING';
 
@@ -53,11 +53,14 @@
     }
   }
 
+  // Normalizes whitespace while preserving paragraph structure: single and
+  // double line breaks survive (paragraphs stay paragraphs); runs of 3+
+  // collapse to a paragraph break; trailing spaces per line are trimmed.
   function norm(s) {
     return String(s || '')
-      .replace(/\r/g, '')
+      .replace(/\r\n?/g, '\n')
       .replace(/[ \t\f\v]+/g, ' ')
-      .replace(/ +\n/g, '\n')
+      .replace(/[ \t\f\v]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
@@ -70,21 +73,87 @@
     } catch {
       t = '';
     }
-    if (!t || !t.trim()) {
-      try {
-        t = el.textContent || '';
-      } catch {
-        t = '';
-      }
+    if (t && t.trim()) return norm(t);
+    // innerText is empty for non-rendered content (display:none nodes,
+    // aria-hidden announcers, detached fragments). Only fall back to
+    // textContent when the element is actually rendered; otherwise hidden
+    // accessibility chrome would leak into the capture.
+    if (!isRendered(el)) return '';
+    try {
+      t = el.textContent || '';
+    } catch {
+      t = '';
     }
     return norm(t);
+  }
+
+  // True when the element participates in layout and is not explicitly
+  // hidden. Defaults to true when layout APIs are unavailable (tests,
+  // exotic contexts) so genuine messages are never dropped for lack
+  // of a measurement API.
+  function isRendered(el) {
+    try {
+      if (el && typeof el.getClientRects === 'function') {
+        if (el.getClientRects().length === 0) return false;
+      }
+      if (
+        typeof window !== 'undefined' &&
+        window.getComputedStyle &&
+        el &&
+        el.nodeType !== 11
+      ) {
+        const cs = window.getComputedStyle(el);
+        if (cs && (cs.visibility === 'hidden' || cs.display === 'none')) {
+          return false;
+        }
+      }
+    } catch {
+      return true;
+    }
+    return true;
+  }
+
+  // True for overlay chrome (hover tooltips, toast portals, drag helpers):
+  // genuine conversation turns are never fixed-position. Defaults to false
+  // when measurement APIs are unavailable so real messages are never
+  // dropped for lack of a measurement API.
+  function isFixed(el) {
+    try {
+      if (typeof window === 'undefined' || !window.getComputedStyle || !el) {
+        return false;
+      }
+      const cs = window.getComputedStyle(el);
+      return !!cs && cs.position === 'fixed';
+    } catch {
+      return false;
+    }
   }
 
   function insideExcluded(el) {
     try {
       if (!el || !el.closest) return false;
       return !!el.closest(
-        'form,textarea,a,[contenteditable="true"],[data-testid*="composer"],header,nav,aside,footer,[role="dialog"],[role="navigation"]'
+        'form,textarea,a,[contenteditable="true"],[data-testid*="composer"],' +
+          'header,nav,aside,footer,[role="dialog"],[role="navigation"],' +
+          '[role="menu"],[role="menuitem"],[aria-hidden="true"],' +
+          '[role="status"],[role="alert"],[role="log"],[role="tooltip"],' +
+          '[role="marquee"],[role="timer"],[aria-live="assertive"],' +
+          '[hidden],[inert]'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  // Live-region guard for the weak-signal structural fallback: polite
+  // announcements (streaming chatter, drag/drop instructions, toasts) must
+  // never become conversation turns. Attribute-strong strategies above keep
+  // working so genuine streaming replies are unaffected.
+  function insideLive(el) {
+    try {
+      if (!el || !el.closest) return false;
+      return !!el.closest(
+        '[aria-live],[role="status"],[role="alert"],[role="log"]'
       );
     } catch {
       return false;
@@ -235,7 +304,7 @@
     const out = [];
     let auto = 0;
     for (const el of els) {
-      if (insideExcluded(el)) continue;
+      if (insideExcluded(el) || isFixed(el)) continue;
       if (hasInnerRole(el) && readRole(el) === '') {
         // container wrapping inner role nodes already covered by strategy 1
         continue;
@@ -255,7 +324,7 @@
     const out = [];
     let auto = 0;
     for (const el of els) {
-      if (insideExcluded(el)) continue;
+      if (insideExcluded(el) || isFixed(el)) continue;
       const text = visibleText(el);
       if (!text || text.length < 2) continue;
       const role = roleOf(el, auto % 2 === 0 ? 'user' : 'assistant');
@@ -341,7 +410,12 @@
         /* ignore */
       }
       try {
-        if (isBlockTag(node) && !insideExcluded(node)) {
+        if (
+          isBlockTag(node) &&
+          !insideExcluded(node) &&
+          !insideLive(node) &&
+          !isFixed(node)
+        ) {
           const text = visibleText(node);
           if (text && text.length >= 24) found.push({ el: node, text });
         }
@@ -375,6 +449,16 @@
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
       out.push({ role, text: b.text });
+    }
+    // Weakest signal of all: hook-less text blocks may be anything (toasts,
+    // tooltips, announcements). Only accept a COMPLETE ordered pair — a lone
+    // block here is chrome until proven otherwise, never a "prompt".
+    if (out.length) {
+      const check = pairLatest(out);
+      if (!check.paired || !check.prompt || !check.response) {
+        debug('content-blocks: no complete pair, discarded');
+        return [];
+      }
     }
     debug(`content-blocks: ${out.length} nodes`);
     return out;
@@ -554,6 +638,30 @@
       return true;
     }
 
+    if (
+      message.type === types.AUTO_ANALYZE_ON ||
+      message.type === 'WDAIDT_AUTO_ANALYZE_ON'
+    ) {
+      autoSeq += 1;
+      autoEnabled = true;
+      lastNotifiedHash = ''; // re-evaluate the current thread on enable
+      autoArm();
+      autoSchedule();
+      sendResponse({ ok: true, auto: true });
+      return true;
+    }
+
+    if (
+      message.type === types.AUTO_ANALYZE_OFF ||
+      message.type === 'WDAIDT_AUTO_ANALYZE_OFF'
+    ) {
+      autoSeq += 1;
+      autoEnabled = false;
+      autoDisarm();
+      sendResponse({ ok: true, auto: false });
+      return true;
+    }
+
     if (message.type === types.GET_LATEST || message.type === TYPE_GET_LATEST) {
       try {
         sendResponse({ ok: true, ...getLatestInteraction() });
@@ -570,6 +678,157 @@
     }
     return false;
   }
+
+  // ── Auto Analyze (V0.3): stream-completion trigger + debounce ──────────
+  // Watches the thread for a newly settled exchange. Streaming produces
+  // continuous DOM mutations, so a quiet period of AUTO_DEBOUNCE_MS after
+  // the last mutation means the reply finished. Fires only for complete,
+  // previously unreported pairs while the toggle is ON. The sidebar (if
+  // open) analyzes the payload; nothing is sent anywhere else.
+  const AUTO_DEBOUNCE_MS =
+    (typeof globalThis !== 'undefined' &&
+      globalThis.__WDAIDT_AUTO_DEBOUNCE_MS) ||
+    2000;
+
+  let autoEnabled = false;
+  let autoTimer = null;
+  let autoObserver = null;
+  let lastNotifiedHash = '';
+  // Generation counter: an async storage read that resolves after a newer
+  // explicit ON/OFF (or another refresh) must not clobber the newer state.
+  let autoSeq = 0;
+
+  function snapshotHash(r) {
+    const tail =
+      String(r.prompt).slice(-120) + '\n' + String(r.response).slice(-120);
+    let h = 5381;
+    for (let i = 0; i < tail.length; i++) {
+      h = ((h << 5) + h + tail.charCodeAt(i)) | 0;
+    }
+    return `${r.prompt.length}:${r.response.length}:${h}`;
+  }
+
+  function autoCheck() {
+    autoTimer = null;
+    if (!autoEnabled) return;
+    try {
+      if (typeof document !== 'undefined' && document.hidden) return;
+    } catch {
+      /* proceed when visibility is unknown */
+    }
+    let r;
+    try {
+      r = getLatestInteraction();
+    } catch {
+      return;
+    }
+    if (!r || !r.onChatGPT || !r.prompt || !r.response || !r.paired) return;
+    const h = snapshotHash(r);
+    if (h === lastNotifiedHash) return;
+    lastNotifiedHash = h;
+    const types = sharedTypes();
+    const type = types.AUTO_ANALYZE_TRIGGER || 'WDAIDT_AUTO_ANALYZE_TRIGGER';
+    try {
+      if (typeof chrome === 'undefined' || !chrome.runtime) return;
+      const p = chrome.runtime.sendMessage({
+        type,
+        prompt: r.prompt,
+        response: r.response,
+        url: r.url,
+      });
+      if (p && p.catch) p.catch(() => {});
+    } catch {
+      /* panel closed / no listener — non-fatal */
+    }
+    debug(`auto: notified ${h}`);
+  }
+
+  function autoSchedule() {
+    if (!autoEnabled) return;
+    try {
+      if (autoTimer) clearTimeout(autoTimer);
+      autoTimer = setTimeout(autoCheck, AUTO_DEBOUNCE_MS);
+    } catch {
+      /* timers unavailable */
+    }
+  }
+
+  function autoArm() {
+    if (autoObserver) return;
+    try {
+      if (typeof MutationObserver === 'undefined') return;
+      const target =
+        (typeof document !== 'undefined' &&
+          (document.documentElement || document.body)) ||
+        null;
+      if (!target) return;
+      autoObserver = new MutationObserver(() => autoSchedule());
+      autoObserver.observe(target, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+      debug('auto: watcher armed');
+    } catch {
+      autoObserver = null;
+    }
+  }
+
+  function autoDisarm() {
+    try {
+      if (autoTimer) clearTimeout(autoTimer);
+    } catch {
+      /* ignore */
+    }
+    autoTimer = null;
+    try {
+      if (autoObserver) autoObserver.disconnect();
+    } catch {
+      /* ignore */
+    }
+    autoObserver = null;
+  }
+
+  async function autoRefresh() {
+    const mine = ++autoSeq;
+    let on = false;
+    try {
+      if (
+        typeof chrome !== 'undefined' &&
+        chrome.storage &&
+        chrome.storage.local
+      ) {
+        const s = await chrome.storage.local.get('wdaidt_auto_analyze');
+        on = !!(s && s.wdaidt_auto_analyze === true);
+      }
+    } catch {
+      on = false;
+    }
+    if (mine !== autoSeq) return; // superseded by newer ON/OFF/refresh
+    autoEnabled = on;
+    if (on) {
+      autoArm();
+      autoSchedule();
+    } else {
+      autoDisarm();
+    }
+  }
+
+  try {
+    if (
+      typeof chrome !== 'undefined' &&
+      chrome.storage &&
+      chrome.storage.onChanged &&
+      chrome.storage.onChanged.addListener
+    ) {
+      chrome.storage.onChanged.addListener(() => {
+        autoRefresh();
+      });
+    }
+  } catch {
+    /* non-fatal */
+  }
+  autoRefresh();
 
   try {
     if (

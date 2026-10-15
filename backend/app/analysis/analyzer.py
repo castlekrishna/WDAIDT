@@ -79,14 +79,20 @@ class Analyzer:
 
     @property
     def is_mock(self) -> bool:
+        # Mock mode is strictly opt-in via environment. A missing API key
+        # must surface as an honest 502 (see _get_client), never as a
+        # silent mock success.
         mock_env = os.getenv("MOCK_ANALYSIS", "").lower()
-        return mock_env in ("true", "1", "yes") or not self.api_key
+        return mock_env in ("true", "1", "yes")
 
     def _get_client(self):
         if not self.api_key:
             raise AnalysisException(
                 code="AI_PROVIDER_ERROR",
-                message="GEMINI_API_KEY is not configured.",
+                message=(
+                    "GEMINI_API_KEY is not configured. Set it in backend/.env, "
+                    "or set MOCK_ANALYSIS=true for local testing without the API."
+                ),
                 status_code=502,
             )
         if self._client is None or self._cached_key != self.api_key:

@@ -13,9 +13,22 @@ const WDAIDT_MESSAGES = Object.freeze({
   // Reserved for Day 3 (V0.3 auto analyze)
   AUTO_ANALYZE_ON: 'WDAIDT_AUTO_ANALYZE_ON',
   AUTO_ANALYZE_OFF: 'WDAIDT_AUTO_ANALYZE_OFF',
+  // Content script -> side panel (via runtime message): a newly completed
+  // exchange settled after streaming. Payload: { prompt, response, url }.
+  AUTO_ANALYZE_TRIGGER: 'WDAIDT_AUTO_ANALYZE_TRIGGER',
   ANALYSIS_RESULT: 'WDAIDT_ANALYSIS_RESULT',
   ANALYSIS_ERROR: 'WDAIDT_ANALYSIS_ERROR'
 });
+
+// Stale-result guard: drop a backend response whose echoed request_id no
+// longer matches the latest request the sidebar issued. Missing ids on
+// either side are treated as fresh (never drop what we cannot compare).
+function wdaidtIsStaleResult(expectedRequestId, data) {
+  if (!expectedRequestId) return false;
+  const got = data && data.request_id;
+  if (!got) return false;
+  return got !== expectedRequestId;
+}
 
 // Export for service worker / side panel (non-module scripts share globals).
 // Content scripts cannot use ES modules reliably, so we stay on globals.
@@ -24,4 +37,10 @@ if (typeof self !== 'undefined') {
 }
 if (typeof globalThis !== 'undefined') {
   globalThis.WDAIDT_MESSAGES = WDAIDT_MESSAGES;
+  globalThis.wdaidtIsStaleResult = wdaidtIsStaleResult;
+}
+
+// Test hook: plain-script in the browser, require()-able under node.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { WDAIDT_MESSAGES, wdaidtIsStaleResult };
 }

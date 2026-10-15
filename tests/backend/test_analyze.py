@@ -1,5 +1,6 @@
 """Tests for POST /analyze endpoint and data contract compliance."""
 
+import logging
 import sys
 from pathlib import Path
 import pytest
@@ -154,4 +155,80 @@ def test_ai_provider_error_mapping_502(monkeypatch):
     assert res.status_code == 502
     data = res.json()
     assert data == {"error": {"code": "AI_PROVIDER_ERROR", "message": "Analysis failed. Please try again."}}
+
+
+def test_explicit_mock_mode_returns_analysis_not_echo(caplog, monkeypatch):
+    """Verify opt-in MOCK_ANALYSIS=true analyzes (never echoes inputs) and logs lengths, not content."""
+    monkeypatch.setenv("MOCK_ANALYSIS", "true")
+    prompt = (
+        "Should PYTHON or JAVA Be Used For MACHINE LEARNING Pipelines Given "
+        "Two Years Of Backend Experience And A Focus On Model Deployment?"
+    )
+    response = (
+        "Python is generally recommended because of its extensive machine learning "
+        "ecosystem and active research community."
+    )
+    with caplog.at_level(logging.INFO, logger="wdaidt.analyze"):
+        res = client.post(
+            "/analyze",
+            json={"prompt": prompt, "response": response, "request_id": "mock-1"},
+        )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["request_id"] == "mock-1"
+    # Analysis must be derived insight, never the raw inputs unchanged.
+    assert data["why"] != prompt and data["why"] != response
+    for item in data["influences"] + data["assumptions"] + data["what_could_change"]:
+        assert item != prompt and item != response
+    # Structured logs carry lengths only — never conversation content.
+    logged = "\n".join(r.getMessage() for r in caplog.records if r.name == "wdaidt.analyze")
+    assert "prompt_len=" in logged and "response_len=" in logged
+    assert prompt not in logged
+    assert response not in logged
+
+
+def test_missing_api_key_returns_actionable_502(monkeypatch):
+    """Verify a missing key (without explicit mock) fails honestly instead of mocking silently."""
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("MOCK_ANALYSIS", "false")
+    res = client.post("/analyze", json={"prompt": "P", "response": "R"})
+    assert res.status_code == 502
+    data = res.json()
+    assert data["error"]["code"] == "AI_PROVIDER_ERROR"
+    assert "GEMINI_API_KEY" in data["error"]["message"]
+
+
+def test_retry_succeeds_when_second_attempt_parses(monkeypatch):
+    """Verify one retry: garbage output first, valid JSON second still yields 200."""
+    from app.api.analyze import analyzer
+
+    calls = []
+
+    async def flaky(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return "### not json at all ###"
+        return (
+            '{"why": "The response appears to answer the question.", '
+            '"influences": [], "assumptions": [], "what_could_change": []}'
+        )
+
+    monkeypatch.setattr(analyzer, "_call_gemini_once", flaky)
+    res = client.post("/analyze", json={"prompt": "P", "response": "R"})
+    assert res.status_code == 200
+    assert len(calls) == 2
+    assert res.json()["why"].startswith("The response appears")
+
+
+def test_unparseable_output_after_retry_returns_502(monkeypatch):
+    """Verify persistent garbage output exhausts the single retry and fails honestly."""
+    from app.api.analyze import analyzer
+
+    async def always_garbage(*args, **kwargs):
+        return "### not json at all ###"
+
+    monkeypatch.setattr(analyzer, "_call_gemini_once", always_garbage)
+    res = client.post("/analyze", json={"prompt": "P", "response": "R"})
+    assert res.status_code == 502
+    assert res.json()["error"]["code"] == "AI_PROVIDER_ERROR"
 

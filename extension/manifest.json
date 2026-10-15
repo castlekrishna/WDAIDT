@@ -2,12 +2,21 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "V0.2: robust ChatGPT prompt/response capture with ordered role pairing and staged sidebar errors. Manual Why? only.",
   "minimum_chrome_version": "114",
-  "icons": {},
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
   "action": {
-    "default_title": "Why Did AI Do That?"
+    "default_title": "Why Did AI Do That?",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
   },
   "side_panel": {
     "default_path": "src/sidepanel/index.html"

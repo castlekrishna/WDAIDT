@@ -1,5 +1,8 @@
 """API Router for /analyze and /health endpoints."""
 
+import logging
+import time
+
 from fastapi import APIRouter
 from app.analysis.analyzer import analyzer
 from app.models.analysis import (
@@ -12,6 +15,7 @@ from app.models.analysis import (
 from app.models.exceptions import AnalysisException
 
 router = APIRouter()
+logger = logging.getLogger("wdaidt.analyze")
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -23,8 +27,16 @@ async def health_check():
 @router.post("/analyze", response_model=AnalysisResult)
 async def analyze_interaction(request: AnalysisRequest):
     """Analyze the interaction pair (prompt + response) and return structured debug insights."""
+    started = time.perf_counter()
+    prompt_len = len(request.prompt)
+    response_len = len(request.response)
     # Size limits validation per API agreement (Section 2 & 4)
-    if len(request.prompt) > MAX_PROMPT_CHARS or len(request.response) > MAX_RESPONSE_CHARS:
+    if prompt_len > MAX_PROMPT_CHARS or response_len > MAX_RESPONSE_CHARS:
+        logger.warning(
+            "analyze rejected code=PAYLOAD_TOO_LARGE prompt_len=%d response_len=%d",
+            prompt_len,
+            response_len,
+        )
         raise AnalysisException(
             code="PAYLOAD_TOO_LARGE",
             message="Prompt or response exceeds maximum allowed length.",
@@ -33,6 +45,11 @@ async def analyze_interaction(request: AnalysisRequest):
 
     # Empty or whitespace-only validation
     if not request.prompt.strip() or not request.response.strip():
+        logger.warning(
+            "analyze rejected code=INVALID_REQUEST prompt_len=%d response_len=%d",
+            prompt_len,
+            response_len,
+        )
         raise AnalysisException(
             code="INVALID_REQUEST",
             message="Prompt and response must both be non-empty strings.",
@@ -43,5 +60,12 @@ async def analyze_interaction(request: AnalysisRequest):
         prompt=request.prompt,
         response=request.response,
         request_id=request.request_id,
+    )
+    logger.info(
+        "analyze ok request_id=%s prompt_len=%d response_len=%d latency_ms=%d",
+        request.request_id,
+        prompt_len,
+        response_len,
+        int((time.perf_counter() - started) * 1000),
     )
     return result

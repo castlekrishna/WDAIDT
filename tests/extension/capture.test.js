@@ -58,17 +58,21 @@ function subtreeList(nodes) {
   return out;
 }
 
-function makeEl({ tag = 'div', attrs = {}, text = '', children = [], shadow = null }) {
+function makeEl({ tag = 'div', attrs = {}, text = '', children = [], shadow = null, inner = null, rects = true, pos = 'static' }) {
   const el = {
     tagName: String(tag).toUpperCase(),
     _attrs: { ...attrs },
     _text: text,
+    _inner: inner,
+    _rects: rects,
+    _pos: pos,
     children: [],
     parent: null,
     shadowRoot: null,
     _order: ORDER++,
-    get innerText() { return this._text; },
+    get innerText() { return this._inner != null ? this._inner : this._text; },
     get textContent() { return this._text; },
+    getClientRects() { return this._rects ? [{}] : []; },
     getAttribute(name) {
       return Object.prototype.hasOwnProperty.call(this._attrs, name)
         ? this._attrs[name]
@@ -82,7 +86,8 @@ function makeEl({ tag = 'div', attrs = {}, text = '', children = [], shadow = nu
       return subtreeList(this.children).filter((e) => matchesAny(e, sel));
     },
     closest(sel) {
-      let node = this.parent;
+      // Matches real DOM semantics: self is tested first, then ancestors.
+      let node = this;
       while (node) {
         if (matchesAny(node, sel)) return node;
         node = node.parent;
@@ -169,6 +174,11 @@ function loadScript({ elements, hostname = 'chatgpt.com', href = 'https://chatgp
     document: documentStub,
     window: {
       location: { hostname, href },
+      getComputedStyle: (el) => ({
+        position: (el && el._pos) || 'static',
+        visibility: 'visible',
+        display: 'block',
+      }),
       __WDAIDT_DEBUG__: [],
       __WDAIDT__: undefined,
     },
@@ -395,6 +405,136 @@ test('empty conversation: both empty, strategy and fingerprint reported', async 
   assert.match(res.strategy, /role-attributes/);
   assert.ok(res.fingerprint);
   assert.equal(res.fingerprint.roleAttr, 0);
+});
+
+// ---- Accessibility / chrome-noise exclusion (bug report) -------------------------
+const DRAGGABLE_ANNOUNCEMENT =
+  'To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again to drop the item in its new position, or press escape to cancel.';
+
+function liveAnnouncer(text) {
+  // Hidden live region: nothing rendered (innerText ''), full textContent.
+  return makeEl({ attrs: { 'aria-live': 'polite' }, text, inner: '', rects: false });
+}
+
+test('bug report: menu chrome + hidden live-region text are never paired', async () => {
+  const { send } = loadScript({
+    elements: [
+      makeEl({
+        attrs: { role: 'menu' },
+        children: [makeEl({ text: 'Clarify Auto Analyze Request ID' })],
+      }),
+      liveAnnouncer(DRAGGABLE_ANNOUNCEMENT),
+      makeEl({ attrs: { role: 'tooltip' }, text: 'Drag the handle to reorder this long conversation thread item' }),
+    ],
+  });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.prompt, '');
+  assert.equal(res.response, '');
+  assert.ok(!res.response.includes('draggable'));
+  assert.ok(!res.prompt.includes('Clarify Auto Analyze'));
+});
+
+test('genuine pair wins over live-region + tooltip + hidden noise', async () => {
+  const { send } = loadScript({
+    elements: [
+      liveAnnouncer(DRAGGABLE_ANNOUNCEMENT),
+      makeEl({ attrs: { role: 'tooltip' }, text: 'Drag the handle to reorder this long conversation thread item' }),
+      user('Should I learn Python or Java for AI?'),
+      assistant('Python is generally recommended because of its AI ecosystem.'),
+    ],
+  });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.strategy, 'role-attributes');
+  assert.equal(res.prompt, 'Should I learn Python or Java for AI?');
+  assert.equal(res.response, 'Python is generally recommended because of its AI ecosystem.');
+});
+
+test('aria-hidden subtree is excluded even with role attributes', async () => {
+  const hidden = makeEl({ attrs: { 'aria-hidden': 'true' }, text: '' });
+  const u = makeEl({ attrs: { 'data-message-author-role': 'user' }, text: 'hidden draft question text here' });
+  u.parent = hidden;
+  hidden.children = [u];
+  const { send } = loadScript({ elements: [hidden] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.prompt, '');
+  assert.equal(res.response, '');
+});
+
+test('role=status announcer is excluded from structural fallback', async () => {
+  const { send } = loadScript({
+    elements: [
+      makeEl({ attrs: { role: 'status' }, text: 'ChatGPT is generating a very long response for your request right now' }),
+    ],
+  });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.prompt, '');
+  assert.equal(res.response, '');
+});
+
+test('assistant-only page never invents a prompt', async () => {
+  const { send } = loadScript({
+    elements: [assistant('Paris is the capital of France, in Europe.')],
+  });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.prompt, '');
+  assert.equal(res.response, 'Paris is the capital of France, in Europe.');
+  assert.equal(res.paired, false);
+});
+
+test('dynamically grown message text is captured on re-read', async () => {
+  const u = user('Explain recursion briefly please');
+  const a = assistant('Recursion is');
+  const { send } = loadScript({ elements: [u, a] });
+  const before = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(before.response, 'Recursion is');
+  a._text = 'Recursion is when a function calls itself with a smaller input.';
+  const after = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(after.prompt, 'Explain recursion briefly please');
+  assert.equal(after.response, 'Recursion is when a function calls itself with a smaller input.');
+});
+
+test('fixed-position overlay portal is excluded from structural fallback', async () => {
+  const main = makeEl({
+    tag: 'main',
+    children: [
+      makeEl({ text: 'Is it raining in Chennai right now or asking about another place?' }),
+      makeEl({ text: 'Rainfall is expected across parts of Tamil Nadu through the coming days, so stay indoors during thunder.' }),
+    ],
+  });
+  const portal = makeEl({
+    text: 'To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item.',
+    pos: 'fixed',
+  });
+  const { send } = loadScript({ elements: [main, portal] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.strategy, 'content-blocks');
+  assert.match(res.prompt, /raining in Chennai/);
+  assert.match(res.response, /Tamil Nadu/);
+  assert.ok(!res.prompt.includes('draggable'));
+  assert.ok(!res.response.includes('draggable'));
+  assert.equal(res.paired, true);
+});
+
+test('content-blocks refuses a lone block instead of inventing a prompt', async () => {
+  const { send } = loadScript({
+    elements: [
+      makeEl({ text: 'To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item around.' }),
+    ],
+  });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.prompt, '');
+  assert.equal(res.response, '');
+});
+
+test('hidden attribute content is excluded', async () => {
+  const { send } = loadScript({
+    elements: [
+      makeEl({ attrs: { hidden: '' }, text: 'This hidden panel explains a very long configuration workflow in detail' }),
+    ],
+  });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+  assert.equal(res.prompt, '');
+  assert.equal(res.response, '');
 });
 
 test('PING answers, unknown types are ignored', async () => {
