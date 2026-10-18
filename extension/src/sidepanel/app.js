@@ -61,6 +61,7 @@
     els.resultCard.hidden = true;
     els.errorCard.hidden = true;
     els.modeBadge.hidden = true;
+    els.captureCard.hidden = true;
     if (els.diagBtn) els.diagBtn.hidden = true;
     lastDiag = null;
   }
@@ -86,7 +87,19 @@
   }
 
   async function getActiveTab() {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    let tabs;
+    try {
+      tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    } catch {
+      tabs = null;
+    }
+    if (!tabs || !tabs.length) {
+      try {
+        tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      } catch {
+        tabs = null;
+      }
+    }
     return tabs && tabs[0];
   }
 
@@ -191,6 +204,16 @@
       err.stage = 'capture';
       err.details = meta;
       err.partial = { prompt, response: '' };
+      lastDiag = {
+        error: err.code,
+        message: err.message,
+        url: res.url || (tab && tab.url) || '',
+        strategy: meta.strategy,
+        userCount: meta.userCount,
+        assistantCount: meta.assistantCount,
+        fingerprint: res.fingerprint || null
+      };
+      if (els.diagBtn) els.diagBtn.hidden = false;
       logEvent('capture_partial', { code: err.code, promptLen: prompt.length });
       throw err;
     }
@@ -200,6 +223,16 @@
       err.stage = 'capture';
       err.details = meta;
       err.partial = { prompt: '', response };
+      lastDiag = {
+        error: err.code,
+        message: err.message,
+        url: res.url || (tab && tab.url) || '',
+        strategy: meta.strategy,
+        userCount: meta.userCount,
+        assistantCount: meta.assistantCount,
+        fingerprint: res.fingerprint || null
+      };
+      if (els.diagBtn) els.diagBtn.hidden = false;
       logEvent('capture_partial', { code: err.code, responseLen: response.length });
       throw err;
     }

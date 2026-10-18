@@ -37,7 +37,22 @@ function matchToken(el, token) {
     if (op === '*=') return actual.includes(val);
     return false;
   }
-  if (t.startsWith('.') || t.startsWith('#')) return false;
+  if (t.includes('.')) {
+    const parts = t.split('.');
+    const tagPart = parts[0].trim();
+    if (tagPart && tagPart !== '*' && el.tagName !== tagPart.toUpperCase()) return false;
+    const cls = parts.slice(1);
+    const actual = String(el._attrs?.class || el.className || '').split(/\s+/);
+    return cls.every((c) => actual.includes(c));
+  }
+  if (t.includes('#')) {
+    const parts = t.split('#');
+    const tagPart = parts[0].trim();
+    if (tagPart && tagPart !== '*' && el.tagName !== tagPart.toUpperCase()) return false;
+    const id = parts[1];
+    const actual = String(el._attrs?.id || el.id || '');
+    return actual === id;
+  }
   return el.tagName === t.toUpperCase();
 }
 
@@ -70,9 +85,24 @@ function makeEl({ tag = 'div', attrs = {}, text = '', children = [], shadow = nu
     parent: null,
     shadowRoot: null,
     _order: ORDER++,
-    get innerText() { return this._inner != null ? this._inner : this._text; },
-    get textContent() { return this._text; },
-    getClientRects() { return this._rects ? [{}] : []; },
+    get className() { return this._attrs['class'] || ''; },
+    get id() { return this._attrs['id'] || ''; },
+    get innerText() {
+      if (this._inner != null) return this._inner;
+      if (this._text) return this._text;
+      return this.children.map((c) => c.innerText).filter(Boolean).join('\n');
+    },
+    get textContent() {
+      if (this._text) return this._text;
+      return this.children.map((c) => c.textContent).filter(Boolean).join('\n');
+    },
+    getClientRects() {
+      if (this._rects === false) return [];
+      if (typeof this._rects === 'object' && this._rects !== null) {
+        return Array.isArray(this._rects) ? this._rects : [this._rects];
+      }
+      return [{ width: 100, height: 50 }];
+    },
     getAttribute(name) {
       return Object.prototype.hasOwnProperty.call(this._attrs, name)
         ? this._attrs[name]
@@ -556,4 +586,275 @@ test('non-ChatGPT host reports onChatGPT:false', async () => {
   assert.equal(res.onChatGPT, false);
   assert.equal(res.prompt, '');
   assert.equal(res.response, '');
+});
+
+test('modern ChatGPT UI: real prompt and response captured inside main while sidebar and dnd announcement are excluded', async () => {
+  // Sidebar with pinned chat
+  const sidebar = makeEl({
+    attrs: { id: 'sidebar', class: 'sidebar' },
+    children: [
+      makeEl({ attrs: { class: 'sidebar-item' }, text: 'Learn Python Fundamentals' }),
+      makeEl({ attrs: { class: 'sidebar-item' }, text: 'Arch Linux Pros And Cons' }),
+    ],
+  });
+
+  // dnd-kit announcer at body root
+  const dndAnnouncer = makeEl({
+    attrs: { id: 'DndDescribedBy-0' },
+    rects: [{ width: 1, height: 1 }],
+    text: 'To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again to drop the item in its new position, or press escape to cancel.',
+  });
+
+  // Modern ChatGPT conversation in <main>
+  const main = makeEl({
+    tag: 'main',
+    children: [
+      makeEl({
+        attrs: { class: 'whitespace-pre-wrap' },
+        text: 'i wanna start learning python',
+      }),
+      makeEl({
+        attrs: { class: 'markdown prose' },
+        text: "Brooo, let's do this properly. 🔥 Since you're aiming for AI/ML, Python is going to be one of your most important tools. But we're not going to spend three months watching tutorials and somehow forget how to write a loop.",
+      }),
+    ],
+  });
+
+  const { send } = loadScript({ elements: [sidebar, dndAnnouncer, main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'i wanna start learning python');
+  assert.match(res.response, /Brooo, let's do this properly/);
+  assert.ok(!res.prompt.includes('draggable'));
+  assert.ok(!res.response.includes('draggable'));
+  assert.ok(!res.prompt.includes('Learn Python Fundamentals'));
+  assert.ok(!res.response.includes('Learn Python Fundamentals'));
+});
+
+test('modern ChatGPT UI: interactive quiz/widget assistant turn with radio form is paired with prompt', async () => {
+  const userTurn = makeEl({
+    attrs: { class: 'whitespace-pre-wrap' },
+    text: 'i wanna start learning java',
+  });
+
+  const quizForm = makeEl({
+    tag: 'form',
+    text: '3. How much time can you give Java daily? 1 hour. Start Lesson 1 ->',
+  });
+
+  const proseText = makeEl({
+    attrs: { class: 'markdown prose' },
+    text: "We'll learn one concept at a time, write code, solve small exercises, and review your answers before moving on.",
+  });
+
+  const copyBtn = makeEl({
+    tag: 'button',
+    attrs: { 'aria-label': 'Copy' },
+    text: 'Copy',
+  });
+
+  const asstTurn = makeEl({
+    tag: 'article',
+    attrs: { 'data-testid': 'conversation-turn-3', 'aria-live': 'polite' },
+    children: [quizForm, proseText, copyBtn],
+  });
+
+  const main = makeEl({
+    tag: 'main',
+    children: [userTurn, asstTurn],
+  });
+
+  const { send } = loadScript({ elements: [main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'i wanna start learning java');
+  assert.match(res.response, /learn one concept at a time/);
+});
+test('modern ChatGPT UI: subsequent turn in multi-turn conversation captures the latest exchange, not the first', async () => {
+  // Outer container wrapping both turns
+  const turn1User = makeEl({
+    attrs: { class: 'whitespace-pre-wrap' },
+    text: 'i wanna start learning python',
+  });
+  const turn1Asst = makeEl({
+    attrs: { class: 'markdown prose' },
+    text: "Brooo, let's do this properly.",
+  });
+  const turn2User = makeEl({
+    attrs: { class: 'whitespace-pre-wrap' },
+    text: 'i will start learning java guide me',
+  });
+  const turn2Asst = makeEl({
+    attrs: { class: 'markdown prose' },
+    text: "Worked for 11s\nKrishna, let's do this properly. We're going to learn Java from fundamentals.",
+  });
+
+  const main = makeEl({
+    tag: 'main',
+    attrs: { class: 'prose max-w-none' },
+    children: [turn1User, turn1Asst, turn2User, turn2Asst],
+  });
+
+  const { send } = loadScript({ elements: [main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'i will start learning java guide me');
+  assert.match(res.response, /We're going to learn Java/);
+});
+
+test('modern ChatGPT UI: client-side SPA navigation from old chat to new chat captures the active chat', async () => {
+  // Stale lingering main from previous chat (hidden/unrendered)
+  const oldMain = makeEl({
+    tag: 'main',
+    attrs: { class: 'hidden' },
+    rects: false,
+    children: [
+      makeEl({
+        attrs: { class: 'whitespace-pre-wrap' },
+        rects: false,
+        text: 'i wanna start learning python',
+      }),
+    ],
+  });
+
+  // Active main from new chat
+  const newMain = makeEl({
+    tag: 'main',
+    children: [
+      makeEl({
+        attrs: { class: 'whitespace-pre-wrap' },
+        text: 'hi',
+      }),
+      makeEl({
+        attrs: { class: 'markdown' },
+        text: "Krishnaaa! 😂🤝 What's up, bro? I'm here. What are we working on tonight?",
+      }),
+    ],
+  });
+
+  const { send } = loadScript({ elements: [oldMain, newMain] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'hi');
+  assert.match(res.response, /Krishnaaa!/);
+});
+
+test('modern ChatGPT UI: fixed layout wrapper (fixed inset-0) does not reject genuine conversation turns', async () => {
+  // SPA root layout shell with position: fixed
+  const shell = makeEl({
+    attrs: { class: 'fixed inset-0 flex' },
+    pos: 'fixed',
+    children: [
+      makeEl({
+        attrs: { class: 'whitespace-pre-wrap' },
+        text: 'explain quicksort',
+      }),
+      makeEl({
+        attrs: { class: 'markdown' },
+        text: 'Quicksort is an efficient divide-and-conquer sorting algorithm.',
+      }),
+    ],
+  });
+
+  const { send } = loadScript({ elements: [shell] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'explain quicksort');
+  assert.match(res.response, /divide-and-conquer/);
+});
+
+test('modern ChatGPT UI: short prompt ("hi") and assistant reply with nested pre/code block and bottom disclaimer are correctly paired', async () => {
+  const userBubble = makeEl({
+    attrs: { class: 'whitespace-pre-wrap' },
+    text: 'hi',
+  });
+
+  const codeSnippet = makeEl({
+    tag: 'pre',
+    attrs: { class: 'whitespace-pre-wrap' },
+    text: 'print("hello")',
+  });
+
+  const asstBubble = makeEl({
+    attrs: { class: 'markdown prose w-full' },
+    text: "Krishnaaa! 😂🤝 What's up, bro? What are we working on tonight? Java, DSA, a new project, or something completely different?",
+    children: [codeSnippet],
+  });
+
+  const disclaimer = makeEl({
+    attrs: { class: 'text-xs text-center' },
+    text: 'ChatGPT can make mistakes. Check important info.',
+  });
+
+  const main = makeEl({
+    tag: 'main',
+    children: [userBubble, asstBubble, disclaimer],
+  });
+
+  const { send } = loadScript({ elements: [main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'hi');
+  assert.match(res.response, /Krishnaaa!/);
+  assert.ok(!res.response.includes('ChatGPT can make mistakes'));
+  assert.ok(!res.prompt.includes('ChatGPT can make mistakes'));
+});
+
+test('modern ChatGPT UI: feedback survey ("Is this conversation helpful so far?") is excluded and prompt with full assistant roadmap is captured', async () => {
+  const userBubble = makeEl({
+    attrs: { class: 'whitespace-pre-wrap' },
+    text: 'i wanna start learning python',
+  });
+
+  const p1 = makeEl({
+    tag: 'p',
+    text: "Brooo, let's do this properly. 🔥 Since you're aiming for AI/ML, Python is going to be one of your most important tools.",
+  });
+  const p2 = makeEl({
+    tag: 'p',
+    text: "Phase 1: Python fundamentals. Phase 2: Strong Python.",
+  });
+  const p3 = makeEl({
+    tag: 'p',
+    text: "Your mission: Write day01.py, run it, and send me your code. I'll review it like a coding buddy, explain any mistakes, and then we'll move to the next concept. One working program at a time.",
+  });
+
+  const asstBubble = makeEl({
+    attrs: { class: 'markdown prose w-full' },
+    children: [p1, p2, p3],
+  });
+
+  const surveyWidget = makeEl({
+    attrs: { class: 'feedback-survey' },
+    text: 'Is this conversation helpful so far?',
+  });
+
+  const main = makeEl({
+    tag: 'main',
+    children: [userBubble, asstBubble, surveyWidget],
+  });
+
+  const { send } = loadScript({ elements: [main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'i wanna start learning python');
+  assert.match(res.response, /Brooo, let's do this properly/);
+  assert.match(res.response, /Your mission: Write day01.py/);
+  assert.ok(!res.response.includes('helpful so far'));
+  assert.ok(!res.prompt.includes('helpful so far'));
+  assert.ok(!res.prompt.includes('Your mission'));
 });

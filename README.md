@@ -2,7 +2,7 @@
 
 Browser extension for ChatGPT that explains *what appears to have shaped* an AI response — factors, assumptions, and what could change the answer. Sidebar-first, manual or automatic.
 
-> Scope note: **Day 1 (Extension V0.1)** and **Day 2 (Backend V0.2)** are complete ✅. Day 3 lands Auto Analyze (V0.3).
+> Scope note: **Day 1 (Extension V0.1)**, **Day 2 (Backend V0.2)**, and **Day 3 (Auto Analyze V0.3)** are complete ✅. **Day 4 (V0.4)** lands multi-turn SPA capture hardening and dynamic chat lifecycle resilience.
 
 ---
 
@@ -36,6 +36,15 @@ Browser extension for ChatGPT that explains *what appears to have shaped* an AI 
 - [x] Capture reliability fix — hidden accessibility announcements (`aria-live`/`aria-hidden`/applicable roles), tooltips, menu chrome, fixed-position overlay portals, and `[hidden]/[inert]` content are excluded from extraction; `textContent` fallback gated on rendered elements; the structural fallback only accepts complete ordered pairs; no string-matching of specific messages (`docs/DAY3.md`)
 - [x] End-to-end honesty hardening — paragraph breaks preserved capture→display; mock backend strictly opt-in (`MOCK_ANALYSIS=true`), missing key → actionable 502; staged errors with Retry instead of placeholder results; lengths-only structured logging (`docs/DAY3.md`)
 
+### Day 4 (V0.4) — Capture Reliability & SPA Hardening ✅
+- [x] Modern ChatGPT SPA multi-turn capture hardening (`extension/src/content/chatgpt.js`) — partitioned assistant/user container discovery avoids ancestor prose swallowing child user turns; prevents `RESPONSE_PENDING` on subsequent turns
+- [x] Client-side SPA navigation resilience — dynamic active `<main>` scope selection with automatic full-document fallback across route changes and new chats
+- [x] In-chat feedback survey & disclaimer exclusion — filtered survey prompt blocks ("Is this conversation helpful so far?") and system footers ("ChatGPT can make mistakes...") with a 200-char safeguard to preserve complete assistant roadmaps and short user prompts (e.g. "hi")
+- [x] Fixed-position SPA container support — refined `isFixed()` checks to target overlay portals without pruning primary viewport wrappers (`fixed inset-0`)
+- [x] Side panel window targeting — `getActiveTab()` queries `lastFocusedWindow` before `currentWindow` to reliably resolve active ChatGPT tabs when side panel has focus
+- [x] Full regression test suites passing — 46 extension unit tests (`node --test tests/extension/*.test.js`) + 20 backend unit tests (`pytest tests/backend/`)
+- [x] Day 4 documentation (`docs/DAY4.md`)
+
 ---
 
 ## Repo Layout
@@ -44,8 +53,8 @@ Browser extension for ChatGPT that explains *what appears to have shaped* an AI 
 extension/
   manifest.json
   src/
-    content/chatgpt.js            # Lidiya · Day 1 ✅ — capture only
-    sidepanel/                    # Lidiya · Day 1 ✅ — Why? + preview + backend call
+    content/chatgpt.js            # Lidiya · Day 1 & Day 4 ✅ — robust capture engine
+    sidepanel/                    # Lidiya · Day 1 & Day 4 ✅ — Why? + preview + window targeting
     shared/messages.js            # Lidiya · Day 1 ✅ — message types
     shared/config.js              # Lidiya · Day 1 ✅ — backend URL + limits
     background/service-worker.js  # Lidiya · Day 1 ✅ — side-panel wiring
@@ -60,12 +69,13 @@ backend/                          # Krishna · Day 2 ✅ (FastAPI + Gemini)
   requirements.txt
   .env.example
 tests/
-  extension/                      # Lidiya · 39 tests (5 smoke + 24 capture + 6 auto + 4 pipeline)
-  backend/                        # Krishna · Day 2 ✅ (16 unit tests)
+  extension/                      # Lidiya · 46 tests (5 smoke + 31 capture + 6 auto + 4 pipeline)
+  backend/                        # Krishna · 20 unit tests
 docs/
   DAY1.md                         # Day-1 extension handoff notes
   DAY2.md                         # Day-2 backend handoff notes
   DAY3.md                         # Day-3 extension + capture-reliability notes
+  DAY4.md                         # Day-4 multi-turn SPA capture hardening notes
 ```
 
 ---
@@ -98,7 +108,7 @@ python -m pytest tests/backend/ -v
 ```powershell
 node --test tests/extension/capture.test.js tests/extension/auto.test.js tests/extension/day1.smoke.test.js tests/extension/pipeline.test.js
 ```
-(39 passing: capture reliability incl. accessibility-noise exclusion, auto trigger + stale guard, manifest/config/UI contracts, capture-to-request pipeline.)
+(46 passing: capture reliability incl. accessibility-noise exclusion, auto trigger + stale guard, manifest/config/UI contracts, capture-to-request pipeline, multi-turn SPA navigation, and feedback survey filtering.)
 
 ---
 

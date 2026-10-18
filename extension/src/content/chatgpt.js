@@ -94,7 +94,12 @@
   function isRendered(el) {
     try {
       if (el && typeof el.getClientRects === 'function') {
-        if (el.getClientRects().length === 0) return false;
+        const rects = el.getClientRects();
+        if (rects.length === 0) return false;
+        // 1px by 1px or 0px clipping hacks used for screen readers (e.g. dnd-kit)
+        if (rects[0] && rects[0].width != null && rects[0].height != null) {
+          if (rects[0].width <= 1 && rects[0].height <= 1) return false;
+        }
       }
       if (
         typeof window !== 'undefined' &&
@@ -103,8 +108,17 @@
         el.nodeType !== 11
       ) {
         const cs = window.getComputedStyle(el);
-        if (cs && (cs.visibility === 'hidden' || cs.display === 'none')) {
-          return false;
+        if (cs) {
+          if (cs.visibility === 'hidden' || cs.display === 'none') {
+            return false;
+          }
+          if (cs.clip && cs.clip.includes('rect(0')) return false;
+          if (
+            cs.clipPath &&
+            (cs.clipPath.includes('inset(100%)') || cs.clipPath.includes('inset(50%)'))
+          ) {
+            return false;
+          }
         }
       }
     } catch {
@@ -113,17 +127,60 @@
     return true;
   }
 
-  // True for overlay chrome (hover tooltips, toast portals, drag helpers):
-  // genuine conversation turns are never fixed-position. Defaults to false
-  // when measurement APIs are unavailable so real messages are never
-  // dropped for lack of a measurement API.
+  // True for overlay chrome (hover tooltips, toast portals, drag helpers, menus) or
+  // fixed overlays. Genuine conversation turns are never overlay chrome.
   function isFixed(el) {
     try {
-      if (typeof window === 'undefined' || !window.getComputedStyle || !el) {
-        return false;
+      if (!el) return false;
+      if (
+        el.closest &&
+        el.closest(
+          '[role="tooltip"],[role="dialog"],[role="menu"],[role="alertdialog"],' +
+            '[data-radix-portal],[data-floating-ui-portal],[id*="portal"],[class*="portal"]'
+        )
+      ) {
+        return true;
       }
-      const cs = window.getComputedStyle(el);
-      return !!cs && cs.position === 'fixed';
+      if (typeof window !== 'undefined' && window.getComputedStyle) {
+        const cs = window.getComputedStyle(el);
+        if (cs && cs.position === 'fixed') return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  function isFeedbackOrDisclaimer(el) {
+    try {
+      if (!el) return false;
+      if (
+        el.closest &&
+        el.closest(
+          '[data-testid*="feedback"],[class*="feedback"],' +
+          '[data-testid*="disclaimer"],[class*="disclaimer"],' +
+          '[data-testid*="survey"],[class*="survey"]'
+        )
+      ) {
+        return true;
+      }
+      const text = norm(el.textContent || '');
+      // If el has substantial text, it's a message or turn container, not a tiny widget
+      if (!text || text.length > 200) return false;
+      const lower = text.toLowerCase();
+      if (
+        lower.includes('chatgpt can make mistakes') ||
+        lower.includes('check important info') ||
+        lower.includes('consider checking important information') ||
+        lower.includes('helpful so far') ||
+        lower.includes('was this response helpful') ||
+        lower.includes('was this helpful') ||
+        lower.includes('give feedback') ||
+        lower.includes('provide feedback')
+      ) {
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }
@@ -131,13 +188,19 @@
 
   function insideExcluded(el) {
     try {
-      if (!el || !el.closest) return false;
+      if (!el) return false;
+      if (isFeedbackOrDisclaimer(el)) return true;
+      if (!el.closest) return false;
       return !!el.closest(
-        'form,textarea,a,[contenteditable="true"],[data-testid*="composer"],' +
-          'header,nav,aside,footer,[role="dialog"],[role="navigation"],' +
+        'textarea,[contenteditable="true"],[data-testid*="composer"],form[data-testid*="composer"],' +
+          'header,[data-testid*="header"],[data-testid*="app-shell"],nav,aside,footer,[role="dialog"],[role="navigation"],' +
           '[role="menu"],[role="menuitem"],[aria-hidden="true"],' +
-          '[role="status"],[role="alert"],[role="log"],[role="tooltip"],' +
+          '[role="alert"],[role="log"],[role="tooltip"],' +
           '[role="marquee"],[role="timer"],[aria-live="assertive"],' +
+          '[id*="Dnd"],[id*="dnd"],[class*="dnd"],' +
+          '#sidebar,[id*="sidebar"],[class*="sidebar"],[data-testid*="sidebar"],' +
+          '[aria-label*="Chat history"],[aria-label*="chat history"],' +
+          '.sr-only,[class*="sr-only"],[class*="visually-hidden"],' +
           '[hidden],[inert]'
       );
     } catch {
@@ -235,10 +298,30 @@
     return fallbackRole;
   }
 
+  function chatScope() {
+    try {
+      if (typeof document !== 'undefined') {
+        const mains = Array.from(document.querySelectorAll('main'));
+        const visibleMains = mains.filter(
+          (m) => isRendered(m) && !insideExcluded(m)
+        );
+        if (visibleMains.length > 0) {
+          return visibleMains[visibleMains.length - 1];
+        }
+        if (mains.length > 0) {
+          return mains[mains.length - 1];
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return typeof document !== 'undefined' ? document : null;
+  }
+
   // Query `selector` across light DOM + open shadow roots, DOM-ordered.
   function deepQuery(selector, root) {
     const out = [];
-    const start = root || (typeof document !== 'undefined' ? document : null);
+    const start = root || chatScope();
     if (!start) return out;
     try {
       const found = start.querySelectorAll(selector);
@@ -281,11 +364,11 @@
   }
 
   // Strategy 1: explicit role attributes, leaf-most containers only.
-  function findRoleNodes() {
-    const els = deepQuery('[data-message-author-role],[data-author-role]');
+  function findRoleNodes(root) {
+    const els = deepQuery('[data-message-author-role],[data-author-role]', root);
     const out = [];
     for (const el of els) {
-      if (insideExcluded(el)) continue;
+      if (insideExcluded(el) || !isRendered(el)) continue;
       const role = readRole(el);
       if (role !== 'user' && role !== 'assistant') continue;
       if (hasInnerRole(el)) continue; // avoid parent/child duplicates
@@ -299,12 +382,12 @@
 
   // Strategy 2: message-id elements (role often lives on a child or in
   // affordances when the top-level role attribute is gone).
-  function findMessageIdNodes() {
-    const els = deepQuery('[data-message-id]');
+  function findMessageIdNodes(root) {
+    const els = deepQuery('[data-message-id]', root);
     const out = [];
     let auto = 0;
     for (const el of els) {
-      if (insideExcluded(el) || isFixed(el)) continue;
+      if (insideExcluded(el) || isFixed(el) || !isRendered(el)) continue;
       if (hasInnerRole(el) && readRole(el) === '') {
         // container wrapping inner role nodes already covered by strategy 1
         continue;
@@ -324,7 +407,7 @@
     const out = [];
     let auto = 0;
     for (const el of els) {
-      if (insideExcluded(el) || isFixed(el)) continue;
+      if (insideExcluded(el) || isFixed(el) || !isRendered(el)) continue;
       const text = visibleText(el);
       if (!text || text.length < 2) continue;
       const role = roleOf(el, auto % 2 === 0 ? 'user' : 'assistant');
@@ -336,9 +419,10 @@
   }
 
   // Strategy 3: conversation-turn wrappers.
-  function findTurnNodes() {
+  function findTurnNodes(root) {
     const els = deepQuery(
-      '[data-testid^="conversation-turn"],[data-testid*="conversation-turn"]'
+      '[data-testid^="conversation-turn"],[data-testid*="conversation-turn"]',
+      root
     );
     const out = pairTurnWrappers(els);
     debug(`conversation-turns: ${out.length} nodes`);
@@ -346,10 +430,100 @@
   }
 
   // Strategy 4: article elements, one turn each.
-  function findArticleNodes() {
-    const els = deepQuery('main article,article');
+  function findArticleNodes(root) {
+    const els = deepQuery('main article,article', root);
     const out = pairTurnWrappers(els);
     debug(`articles: ${out.length} nodes`);
+    return out;
+  }
+
+  // Strategy 5: modern ChatGPT turns — markdown/prose AI containers + whitespace-pre-wrap user bubbles
+  function findModernNodes(root) {
+    const rawEls = deepQuery(
+      '[data-message-author-role="user"], [data-message-author-role="assistant"], ' +
+        '[class*="agent-turn"], [class*="user-turn"], ' +
+        '.markdown, .prose, [class*="markdown"], [class*="prose"], ' +
+        'div.whitespace-pre-wrap, .whitespace-pre-wrap, [class*="whitespace-pre-wrap"]',
+      root
+    );
+    const validEls = rawEls.filter((el) => !insideExcluded(el) && !isFixed(el) && isRendered(el));
+
+    // Identify AI response containers: elements matching .markdown, .prose, agent-turn, or assistant role
+    const asstContainers = validEls.filter((el) => {
+      const isAI =
+        readRole(el) === 'assistant' ||
+        (el.className &&
+          typeof el.className === 'string' &&
+          (el.className.includes('markdown') || el.className.includes('prose') || el.className.includes('agent-turn'))) ||
+        classifyByAffordance(el) === 'assistant';
+      if (!isAI) return false;
+      // Do not keep if an ancestor element is already an AI container (keep outermost response container)
+      if (
+        el.parentElement &&
+        el.parentElement.closest &&
+        el.parentElement.closest('.markdown, .prose, [class*="markdown"], [class*="prose"], [class*="agent-turn"]')
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    // Identify User prompt containers: whitespace-pre-wrap or user-turn that is NOT inside an AI container
+    const userContainers = validEls.filter((el) => {
+      // Internal code blocks, callouts, or quotes inside an AI container are NEVER user turns
+      if (
+        el.closest &&
+        el.closest('.markdown, .prose, [class*="markdown"], [class*="prose"], [class*="agent-turn"]')
+      ) {
+        return false;
+      }
+      const isUser =
+        readRole(el) === 'user' ||
+        (el.className &&
+          typeof el.className === 'string' &&
+          (el.className.includes('user-turn') || el.className.includes('whitespace-pre-wrap'))) ||
+        classifyByAffordance(el) === 'user';
+      if (!isUser) return false;
+      // If an inner whitespace-pre-wrap exists inside this element, keep the inner leaf
+      if (
+        validEls.some(
+          (other) =>
+            other !== el &&
+            other.className &&
+            typeof other.className === 'string' &&
+            other.className.includes('whitespace-pre-wrap') &&
+            containsNode(el, other)
+        )
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const allTurns = [
+      ...asstContainers.map((el) => ({ el, role: 'assistant' })),
+      ...userContainers.map((el) => ({ el, role: 'user' })),
+    ];
+    try {
+      allTurns.sort((a, b) => {
+        if (a.el === b.el) return 0;
+        const pos = a.el.compareDocumentPosition(b.el);
+        return pos & 2 ? 1 : -1;
+      });
+    } catch {
+      /* keep order */
+    }
+
+    const out = [];
+    const seenEls = new Set();
+    for (const turn of allTurns) {
+      if (seenEls.has(turn.el)) continue;
+      seenEls.add(turn.el);
+      const text = visibleText(turn.el);
+      if (!text || !text.trim()) continue;
+      out.push({ role: turn.role, text });
+    }
+    debug(`modern-turns: ${out.length} nodes`);
     return out;
   }
 
@@ -381,15 +555,18 @@
     return false;
   }
 
-  // Strategy 5: structural last resort — substantial text blocks under body
-  // (not just `main`: custom renderers can host the thread in a shadow tree
-  // elsewhere). Sidebar/history chrome is excluded by closest() guards plus
-  // the link-item guard, and a substantial block is required so chrome text
-  // alone never yields a fake pair.
-  function findContentBlocks() {
+  // Strategy 6: structural last resort — substantial text blocks inside <main>
+  // Sidebar/history chrome is excluded by closest() guards plus the link-item guard,
+  // and a substantial block is required so chrome text alone never yields a fake pair.
+  function findContentBlocks(root) {
     let scope = null;
     try {
-      scope = document.body || document.querySelector('main');
+      if (typeof document !== 'undefined') {
+        scope =
+          (root && root !== document ? root : null) ||
+          document.querySelector('main') ||
+          document.body;
+      }
     } catch {
       scope = null;
     }
@@ -429,13 +606,17 @@
     } catch {
       return [];
     }
-    // Keep leaf-most blocks only (drop containers duplicating a descendant).
-    const leaf = found.filter(
-      (b) =>
-        !found.some(
-          (c) => c !== b && c.text.length > 20 && containsNode(b.el, c.el)
-        )
-    );
+    // Keep leaf-most blocks, BUT preserve markdown containers intact (do not fragment into <p>s).
+    const leaf = found.filter((b) => {
+      const isMd =
+        (b.el.className && typeof b.el.className === 'string' && b.el.className.includes('markdown')) ||
+        (b.el.matches && b.el.matches('.markdown, [class*="markdown"]'));
+      if (isMd) return true;
+      if (b.el.closest && b.el.closest('.markdown, [class*="markdown"]')) return false;
+      return !found.some(
+        (c) => c !== b && c.text.length > 20 && containsNode(b.el, c.el)
+      );
+    });
     // Require at least one substantial (assistant-length) block, otherwise
     // this is chrome text, not a conversation.
     if (!leaf.some((b) => b.text.length >= 60)) {
@@ -445,7 +626,20 @@
     let auto = 0;
     const out = [];
     for (const b of leaf) {
-      const role = roleOf(b.el, auto % 2 === 0 ? 'user' : 'assistant');
+      let role = readRole(b.el);
+      if (!role) {
+        if (
+          (b.el.className &&
+            typeof b.el.className === 'string' &&
+            (b.el.className.includes('markdown') ||
+              b.el.className.includes('prose'))) ||
+          classifyByAffordance(b.el) === 'assistant'
+        ) {
+          role = 'assistant';
+        } else {
+          role = roleOf(b.el, auto % 2 === 0 ? 'user' : 'assistant');
+        }
+      }
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
       out.push({ role, text: b.text });
@@ -496,6 +690,7 @@
 
   // Small structural summary so failures are diagnosable from the sidebar.
   function fingerprint() {
+    const docRoot = typeof document !== 'undefined' ? document : null;
     const fp = {
       articles: 0,
       mains: 0,
@@ -507,11 +702,11 @@
       testids: [],
     };
     try {
-      fp.articles = deepQuery('article').length;
-      fp.mains = deepQuery('main').length;
-      fp.roleAttr = deepQuery('[data-message-author-role]').length;
-      fp.messageId = deepQuery('[data-message-id]').length;
-      const withTestid = deepQuery('[data-testid]');
+      fp.articles = deepQuery('article', docRoot).length;
+      fp.mains = (typeof document !== 'undefined' && document.querySelectorAll) ? document.querySelectorAll('main').length : 0;
+      fp.roleAttr = deepQuery('[data-message-author-role]', docRoot).length;
+      fp.messageId = deepQuery('[data-message-id]', docRoot).length;
+      const withTestid = deepQuery('[data-testid]', docRoot);
       const seen = {};
       for (const el of withTestid) {
         let v = '';
@@ -527,7 +722,7 @@
           fp.testids.push(v);
         }
       }
-      const all = deepQuery('*');
+      const all = deepQuery('*', docRoot);
       fp.elements = all.length;
       let s = 0;
       for (const el of all) {
@@ -591,15 +786,20 @@
       };
     }
 
+    const root = chatScope();
     const attempts = [
-      ['role-attributes', findRoleNodes],
-      ['message-id', findMessageIdNodes],
-      ['conversation-turns', findTurnNodes],
-      ['articles', findArticleNodes],
-      ['content-blocks', findContentBlocks],
+      ['role-attributes', () => findRoleNodes(root)],
+      ['message-id', () => findMessageIdNodes(root)],
+      ['conversation-turns', () => findTurnNodes(root)],
+      ['articles', () => findArticleNodes(root)],
+      ['modern-turns', () => findModernNodes(root)],
+      ['content-blocks', () => findContentBlocks(root)],
     ];
     let strategy = 'role-attributes(empty)';
     let r = { ...EMPTY };
+    let bestPartial = null;
+    let bestPartialStrategy = '';
+
     for (const [name, fn] of attempts) {
       let nodes = [];
       try {
@@ -608,9 +808,52 @@
         nodes = [];
       }
       if (!nodes.length) continue;
-      strategy = name;
-      r = pairLatest(nodes);
-      if (r.prompt || r.response) break;
+      const candidate = pairLatest(nodes);
+      if (candidate.paired && candidate.prompt && candidate.response) {
+        // Complete paired turn wins immediately.
+        strategy = name;
+        r = candidate;
+        break;
+      }
+      if (candidate.prompt || candidate.response) {
+        if (!bestPartial || (!bestPartial.response && candidate.response) || (!bestPartial.prompt && candidate.prompt)) {
+          bestPartial = candidate;
+          bestPartialStrategy = name;
+        }
+      }
+    }
+
+    // If the scoped main didn't yield a complete pair, retry across the document body
+    // in case ChatGPT rendered the thread outside main or in an alternate container.
+    if (!r.paired && root && typeof document !== 'undefined' && root !== document) {
+      const docRoot = document;
+      for (const [name, fn] of [
+        ['modern-turns', () => findModernNodes(docRoot)],
+        ['conversation-turns', () => findTurnNodes(docRoot)],
+        ['role-attributes', () => findRoleNodes(docRoot)],
+        ['content-blocks', () => findContentBlocks(docRoot)],
+      ]) {
+        let nodes = [];
+        try { nodes = fn(); } catch { nodes = []; }
+        if (!nodes.length) continue;
+        const candidate = pairLatest(nodes);
+        if (candidate.paired && candidate.prompt && candidate.response) {
+          strategy = name;
+          r = candidate;
+          break;
+        }
+        if (candidate.prompt || candidate.response) {
+          if (!bestPartial || (!bestPartial.response && candidate.response)) {
+            bestPartial = candidate;
+            bestPartialStrategy = name;
+          }
+        }
+      }
+    }
+
+    if (!r.paired && bestPartial) {
+      r = bestPartial;
+      strategy = bestPartialStrategy;
     }
 
     debug(
