@@ -12,13 +12,15 @@
   ['whyBtn', 'retryBtn', 'diagBtn', 'backendLine', 'statusLine', 'captureCard',
    'promptPreview', 'responsePreview', 'resultCard', 'modeBadge', 'whyText',
    'influencesList', 'assumptionsList', 'changeList', 'errorCard',
-   'errorText', 'autoToggle'].forEach((id) => { els[id] = $(id); });
+   'errorText', 'autoToggle', 'statusDot', 'skeletonCard', 'copyAnalysisBtn',
+   'captureAccordionToggle', 'captureAccordionContent', 'captureChevron'].forEach((id) => { els[id] = $(id); });
 
   const CFG = () => globalThis.WDAIDT_CONFIG || {};
   const MSGS = () => globalThis.WDAIDT_MESSAGES || {};
 
   let lastCapture = null; // { prompt, response } for Retry
   let lastDiag = null; // diagnostics payload for the Copy diagnostics button
+  let lastAnalysis = null; // parsed analysis result for Copy action
 
   function fpSummary(fp) {
     if (!fp) return 'n/a';
@@ -41,6 +43,15 @@
 
   function setStatus(msg) { els.statusLine.textContent = msg; }
 
+  function setButtonLoading(loading) {
+    if (!els.whyBtn) return;
+    els.whyBtn.disabled = loading;
+    const spinner = els.whyBtn.querySelector('.btn-spinner');
+    const textSpan = els.whyBtn.querySelector('.btn-text');
+    if (spinner) spinner.hidden = !loading;
+    if (textSpan) textSpan.textContent = loading ? 'Analyzing…' : '✨ Why?';
+  }
+
   // Structured diagnostics: stage outcomes + field lengths only. Never logs
   // prompt/response text, URLs, or anything identifying the conversation.
   function logEvent(event, info) {
@@ -52,6 +63,8 @@
   }
 
   function showError(msg) {
+    if (els.skeletonCard) els.skeletonCard.hidden = true;
+    if (els.statusDot) els.statusDot.className = 'status-dot error';
     els.errorCard.hidden = false;
     els.errorText.textContent = msg;
     els.retryBtn.hidden = false;
@@ -62,8 +75,10 @@
     els.errorCard.hidden = true;
     els.modeBadge.hidden = true;
     els.captureCard.hidden = true;
+    if (els.skeletonCard) els.skeletonCard.hidden = true;
     if (els.diagBtn) els.diagBtn.hidden = true;
     lastDiag = null;
+    lastAnalysis = null;
   }
 
   async function copyDiagnostics() {
@@ -329,11 +344,14 @@
   }
 
   function renderResult(data) {
+    lastAnalysis = data;
     els.whyText.textContent = data.why || '(empty)';
     renderList(els.influencesList, data.influences);
     renderList(els.assumptionsList, data.assumptions);
     renderList(els.changeList, data.what_could_change);
     els.modeBadge.hidden = true;
+    if (els.skeletonCard) els.skeletonCard.hidden = true;
+    if (els.statusDot) els.statusDot.className = 'status-dot connected';
     els.resultCard.hidden = false;
   }
 
@@ -363,6 +381,8 @@
 
   async function analyzeCapture(cap, requestId) {
     setStatus('Analyzing…');
+    if (els.statusDot) els.statusDot.className = 'status-dot analyzing';
+    if (els.skeletonCard) els.skeletonCard.hidden = false;
     logEvent('analyze_start', {
       requestId,
       promptLen: (cap.prompt || '').length,
@@ -372,11 +392,13 @@
     try {
       data = await postAnalyze(cap.prompt, cap.response, requestId);
     } catch (backendErr) {
+      if (els.skeletonCard) els.skeletonCard.hidden = true;
       if (backendErr) backendErr.stage = backendErr.stage || 'analysis';
       logEvent('analyze_error', { code: (backendErr && backendErr.code) || 'UNKNOWN' });
       throw backendErr;
     }
     if (data && isStale(data)) {
+      if (els.skeletonCard) els.skeletonCard.hidden = true;
       logEvent('analyze_stale_dropped', { requestId: data.request_id });
       setStatus('Skipped a stale result — a newer analysis is already running.');
       return;
@@ -387,7 +409,7 @@
   }
 
   async function runWhy() {
-    els.whyBtn.disabled = true;
+    setButtonLoading(true);
     els.retryBtn.hidden = true;
     clearResult();
     try {
@@ -419,7 +441,7 @@
       showError((e && e.message) || 'Analysis failed. Please try again.');
       setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
     } finally {
-      els.whyBtn.disabled = false;
+      setButtonLoading(false);
     }
   }
 
@@ -473,20 +495,90 @@
     }
   }
 
+  async function copyAnalysis() {
+    if (!lastAnalysis) return;
+    const lines = [];
+    if (lastAnalysis.why) {
+      lines.push('### Why this answer?');
+      lines.push(lastAnalysis.why);
+      lines.push('');
+    }
+    if (lastAnalysis.influences && lastAnalysis.influences.length) {
+      lines.push('### Influences');
+      lastAnalysis.influences.forEach((item) => lines.push(`- ${item}`));
+      lines.push('');
+    }
+    if (lastAnalysis.assumptions && lastAnalysis.assumptions.length) {
+      lines.push('### Assumptions');
+      lastAnalysis.assumptions.forEach((item) => lines.push(`- ${item}`));
+      lines.push('');
+    }
+    if (lastAnalysis.what_could_change && lastAnalysis.what_could_change.length) {
+      lines.push('### What could change it?');
+      lastAnalysis.what_could_change.forEach((item) => lines.push(`- ${item}`));
+      lines.push('');
+    }
+    const text = lines.join('\n').trim();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      if (els.copyAnalysisBtn) {
+        const orig = els.copyAnalysisBtn.textContent;
+        els.copyAnalysisBtn.textContent = 'Copied!';
+        setTimeout(() => { if (els.copyAnalysisBtn) els.copyAnalysisBtn.textContent = orig; }, 1800);
+      }
+    } catch {
+      setStatus('Could not copy analysis.');
+    }
+  }
+
+  function initAccordion() {
+    if (!els.captureAccordionToggle) return;
+    els.captureAccordionToggle.addEventListener('click', () => {
+      const content = els.captureAccordionContent;
+      if (!content) return;
+      const isHidden = content.hidden;
+      content.hidden = !isHidden;
+      if (els.captureChevron) {
+        els.captureChevron.textContent = isHidden ? '\u25BC' : '\u25B2';
+      }
+    });
+    els.captureAccordionToggle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        els.captureAccordionToggle.click();
+      }
+    });
+  }
+
   async function checkBackend() {
     const cfg = CFG();
     const base = cfg.BACKEND_BASE_URL || 'http://localhost:8000';
     const url = globalThis.wdaidtHealthUrl ? globalThis.wdaidtHealthUrl(base) : base + '/health';
     try {
+      if (els.statusDot) els.statusDot.className = 'status-dot checking';
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(t);
-      els.backendLine.textContent = res.ok
-        ? `Backend: reachable at ${base}`
-        : `Backend: reachable but unhealthy (${res.status})`;
+      if (res.ok) {
+        els.backendLine.textContent = `Backend: reachable at ${base}`;
+        if (els.statusDot) els.statusDot.className = 'status-dot connected';
+      } else {
+        els.backendLine.textContent = `Backend: reachable but unhealthy (${res.status})`;
+        if (els.statusDot) els.statusDot.className = 'status-dot error';
+      }
     } catch {
       els.backendLine.textContent = `Backend: not reachable at ${base} — start it to enable analysis`;
+      if (els.statusDot) els.statusDot.className = 'status-dot error';
     }
   }
 
@@ -541,6 +633,8 @@
   els.whyBtn.addEventListener('click', runWhy);
   els.retryBtn.addEventListener('click', runWhy);
   if (els.diagBtn) els.diagBtn.addEventListener('click', copyDiagnostics);
+  if (els.copyAnalysisBtn) els.copyAnalysisBtn.addEventListener('click', copyAnalysis);
+  initAccordion();
   checkBackend();
   initAutoToggle();
 })();

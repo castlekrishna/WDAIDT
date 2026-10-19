@@ -8,9 +8,16 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <h1>Why Did AI Do That?</h1>
-      <p class="subtitle">manual <strong>Why?</strong> + Auto &middot; ChatGPT only</p>
+    <div class="brand-group">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <div class="brand-text">
+        <h1>Why Did AI Do That? <span class="badge-version">v0.5</span></h1>
+        <p class="subtitle">Explain ChatGPT responses &middot; manual &amp; auto</p>
+      </div>
     </div>
     <label class="auto-toggle" title="Auto Analyze: new ChatGPT replies are analyzed automatically once streaming finishes.">
       <span>Auto</span>
@@ -21,37 +28,77 @@
 
   <main>
     <section class="card controls">
+      <div class="status-strip">
+        <span class="status-dot checking" id="statusDot" aria-hidden="true"></span>
+        <span id="backendLine" class="status-backend">Backend: checking&hellip;</span>
+      </div>
       <div class="row">
-        <button id="whyBtn" class="primary">Why?</button>
+        <button id="whyBtn" class="primary">
+          <span class="btn-text">✨ Why?</span>
+          <span class="btn-spinner" hidden aria-hidden="true"></span>
+        </button>
         <button id="retryBtn" class="ghost" hidden>Retry</button>
       </div>
-      <p id="backendLine" class="muted">Backend: checking&hellip;</p>
       <p id="statusLine" class="status" role="status">Open a ChatGPT conversation, then click Why?</p>
     </section>
 
-    <section class="card" id="captureCard" hidden>
-      <h2>Captured interaction</h2>
-      <h3>Prompt</h3>
-      <p id="promptPreview" class="preview"></p>
-      <h3>Response</h3>
-      <p id="responsePreview" class="preview"></p>
+    <!-- Skeleton Loading Placeholder -->
+    <section class="card" id="skeletonCard" hidden aria-hidden="true">
+      <div class="skeleton-shimmer skeleton-title"></div>
+      <div class="skeleton-shimmer skeleton-box"></div>
+      <div class="skeleton-shimmer skeleton-line"></div>
+      <div class="skeleton-shimmer skeleton-line short"></div>
+      <div class="skeleton-shimmer skeleton-line"></div>
     </section>
 
+    <!-- Captured Interaction Card (Accordion / Preview) -->
+    <section class="card" id="captureCard" hidden>
+      <div class="accordion-header" id="captureAccordionToggle" role="button" tabindex="0" title="Click to collapse/expand">
+        <div class="accordion-title">
+          <span>Captured Interaction</span>
+        </div>
+        <span class="accordion-chevron" id="captureChevron">&#x25BC;</span>
+      </div>
+      <div class="accordion-content" id="captureAccordionContent">
+        <div>
+          <span class="preview-tag user">Prompt</span>
+          <p id="promptPreview" class="preview"></p>
+        </div>
+        <div style="margin-top: 8px;">
+          <span class="preview-tag assistant">Response</span>
+          <p id="responsePreview" class="preview"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Analysis Result Card -->
     <section class="card" id="resultCard" hidden>
-      <h2>Analysis</h2>
-      <p id="modeBadge" class="badge" hidden></p>
-      <h3>Why this answer?</h3>
-      <p id="whyText"></p>
-      <h3>Influences</h3>
+      <div class="result-header-row">
+        <h2>Analysis</h2>
+        <div class="row">
+          <p id="modeBadge" class="badge" hidden></p>
+          <button id="copyAnalysisBtn" class="ghost btn-mini" title="Copy full explanation to clipboard">Copy</button>
+        </div>
+      </div>
+
+      <h3><span>💡</span> Why this answer?</h3>
+      <div class="hero-summary">
+        <p id="whyText"></p>
+      </div>
+
+      <h3><span>🎯</span> Influences</h3>
       <ul id="influencesList"></ul>
-      <h3>Assumptions</h3>
+
+      <h3><span>🔍</span> Assumptions</h3>
       <ul id="assumptionsList"></ul>
-      <h3>What could change it?</h3>
+
+      <h3><span>⚡</span> What could change it?</h3>
       <ul id="changeList"></ul>
     </section>
 
+    <!-- Error Card -->
     <section class="card error" id="errorCard" hidden>
-      <h2>Something went wrong</h2>
+      <h2><span>⚠️</span> Something went wrong</h2>
       <p id="errorText"></p>
       <div class="row">
         <button id="diagBtn" class="ghost" hidden>Copy diagnostics</button>
@@ -60,7 +107,7 @@
   </main>
 
   <footer class="muted small">
-    Day 1 scope: capture + manual Why? only. No history, no accounts.
+    WDAIDT v0.5 &middot; Analyzed in-memory &middot; Never stored
   </footer>
 
   <script src="../shared/messages.js"></script>
