@@ -15,8 +15,7 @@
         <line x1="12" y1="17" x2="12.01" y2="17"></line>
       </svg>
       <div class="brand-text">
-        <h1>Why Did AI Do That? <span class="badge-version">v0.5</span></h1>
-        <p class="subtitle">Explain ChatGPT responses &middot; manual &amp; auto</p>
+        <h1>Why Did AI Do That?</h1>
       </div>
     </div>
     <label class="auto-toggle" title="Auto Analyze: new ChatGPT replies are analyzed automatically once streaming finishes.">
@@ -34,12 +33,12 @@
       </div>
       <div class="row">
         <button id="whyBtn" class="primary">
-          <span class="btn-text">✨ Why?</span>
+          <span class="btn-text">Why?</span>
           <span class="btn-spinner" hidden aria-hidden="true"></span>
         </button>
         <button id="retryBtn" class="ghost" hidden>Retry</button>
       </div>
-      <p id="statusLine" class="status" role="status">Open a ChatGPT conversation, then click Why?</p>
+      <p id="statusLine" class="status" role="status"></p>
     </section>
 
     <!-- Skeleton Loading Placeholder -->
@@ -81,34 +80,30 @@
         </div>
       </div>
 
-      <h3><span>💡</span> Why this answer?</h3>
+      <h3>Why this answer?</h3>
       <div class="hero-summary">
         <p id="whyText"></p>
       </div>
 
-      <h3><span>🎯</span> Influences</h3>
+      <h3>Influences</h3>
       <ul id="influencesList"></ul>
 
-      <h3><span>🔍</span> Assumptions</h3>
+      <h3>Assumptions</h3>
       <ul id="assumptionsList"></ul>
 
-      <h3><span>⚡</span> What could change it?</h3>
+      <h3>What could change it?</h3>
       <ul id="changeList"></ul>
     </section>
 
     <!-- Error Card -->
     <section class="card error" id="errorCard" hidden>
-      <h2><span>⚠️</span> Something went wrong</h2>
+      <h2>Something went wrong</h2>
       <p id="errorText"></p>
       <div class="row">
         <button id="diagBtn" class="ghost" hidden>Copy diagnostics</button>
       </div>
     </section>
   </main>
-
-  <footer class="muted small">
-    WDAIDT v0.5 &middot; Analyzed in-memory &middot; Never stored
-  </footer>
 
   <script src="../shared/messages.js"></script>
   <script src="../shared/config.js"></script>

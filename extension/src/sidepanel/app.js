@@ -49,7 +49,7 @@
     const spinner = els.whyBtn.querySelector('.btn-spinner');
     const textSpan = els.whyBtn.querySelector('.btn-text');
     if (spinner) spinner.hidden = !loading;
-    if (textSpan) textSpan.textContent = loading ? 'Analyzing…' : '✨ Why?';
+    if (textSpan) textSpan.textContent = loading ? 'Analyzing…' : 'Why?';
   }
 
   // Structured diagnostics: stage outcomes + field lengths only. Never logs
@@ -64,6 +64,7 @@
 
   function showError(msg) {
     if (els.skeletonCard) els.skeletonCard.hidden = true;
+    if (els.resultCard) els.resultCard.hidden = true;
     if (els.statusDot) els.statusDot.className = 'status-dot error';
     els.errorCard.hidden = false;
     els.errorText.textContent = msg;
@@ -71,6 +72,7 @@
   }
 
   function clearResult() {
+    els.resultCard.classList.remove('loading');
     els.resultCard.hidden = true;
     els.errorCard.hidden = true;
     els.modeBadge.hidden = true;
@@ -345,6 +347,7 @@
 
   function renderResult(data) {
     lastAnalysis = data;
+    els.resultCard.classList.remove('loading');
     els.whyText.textContent = data.why || '(empty)';
     renderList(els.influencesList, data.influences);
     renderList(els.assumptionsList, data.assumptions);
@@ -382,7 +385,7 @@
   async function analyzeCapture(cap, requestId) {
     setStatus('Analyzing…');
     if (els.statusDot) els.statusDot.className = 'status-dot analyzing';
-    if (els.skeletonCard) els.skeletonCard.hidden = false;
+    if (els.skeletonCard) els.skeletonCard.hidden = true;
     logEvent('analyze_start', {
       requestId,
       promptLen: (cap.prompt || '').length,
@@ -392,13 +395,11 @@
     try {
       data = await postAnalyze(cap.prompt, cap.response, requestId);
     } catch (backendErr) {
-      if (els.skeletonCard) els.skeletonCard.hidden = true;
       if (backendErr) backendErr.stage = backendErr.stage || 'analysis';
       logEvent('analyze_error', { code: (backendErr && backendErr.code) || 'UNKNOWN' });
       throw backendErr;
     }
     if (data && isStale(data)) {
-      if (els.skeletonCard) els.skeletonCard.hidden = true;
       logEvent('analyze_stale_dropped', { requestId: data.request_id });
       setStatus('Skipped a stale result — a newer analysis is already running.');
       return;
@@ -408,10 +409,22 @@
     setStatus('Done.');
   }
 
+  function showLoadingAnalysis() {
+    els.resultCard.classList.add('loading');
+    els.resultCard.hidden = false;
+    els.whyText.textContent = '';
+    els.influencesList.textContent = '';
+    els.assumptionsList.textContent = '';
+    els.changeList.textContent = '';
+    if (els.modeBadge) els.modeBadge.hidden = true;
+    if (els.skeletonCard) els.skeletonCard.hidden = true;
+  }
+
   async function runWhy() {
     setButtonLoading(true);
     els.retryBtn.hidden = true;
     clearResult();
+    showLoadingAnalysis();
     try {
       setStatus('Capturing latest ChatGPT interaction…');
       const cap = await captureLatest();
@@ -428,8 +441,7 @@
         logEvent('capture_error', { code: (e && e.code) || 'UNKNOWN' });
       }
       if (e && e.partial) {
-        // Partial capture: show what was found, mark the missing side
-        // explicitly instead of substituting one field with the other.
+        // Partial capture: show what was found
         els.captureCard.hidden = false;
         els.promptPreview.textContent = e.partial.prompt
           ? preview(e.partial.prompt)
@@ -459,6 +471,7 @@
     if (h === lastAutoHash) return;
     lastAutoHash = h;
     clearResult();
+    showLoadingAnalysis();
     try {
       const cap = { prompt: (prompt || '').trim(), response: (response || '').trim() };
       if (!cap.prompt || !cap.response) return;
@@ -533,7 +546,13 @@
       if (els.copyAnalysisBtn) {
         const orig = els.copyAnalysisBtn.textContent;
         els.copyAnalysisBtn.textContent = 'Copied!';
-        setTimeout(() => { if (els.copyAnalysisBtn) els.copyAnalysisBtn.textContent = orig; }, 1800);
+        els.copyAnalysisBtn.classList.add('copied');
+        setTimeout(() => {
+          if (els.copyAnalysisBtn) {
+            els.copyAnalysisBtn.textContent = orig;
+            els.copyAnalysisBtn.classList.remove('copied');
+          }
+        }, 1800);
       }
     } catch {
       setStatus('Could not copy analysis.');
