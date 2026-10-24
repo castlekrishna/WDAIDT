@@ -1,7 +1,6 @@
-/* WDAIDT side-panel controller (V0.2).
+/* WDAIDT side-panel controller (V0.6 — Adaptive Analysis Architecture).
  * Only this layer talks to the backend. Content script only captures.
- * Capture errors and analysis errors are reported separately so the user
- * can tell whether ChatGPT text was found and whether the backend failed.
+ * Renders flexible LLM-generated documents with variable block combinations.
  */
 (() => {
   'use strict';
@@ -9,11 +8,15 @@
   const $ = (id) => document.getElementById(id);
 
   const els = {};
-  ['whyBtn', 'retryBtn', 'diagBtn', 'backendLine', 'statusLine', 'captureCard',
-   'promptPreview', 'responsePreview', 'resultCard', 'modeBadge', 'whyText',
-   'influencesList', 'assumptionsList', 'changeList', 'errorCard',
-   'errorText', 'autoToggle', 'statusDot', 'skeletonCard', 'copyAnalysisBtn',
-   'captureAccordionToggle', 'captureAccordionContent', 'captureChevron'].forEach((id) => { els[id] = $(id); });
+  [
+    'whyBtn', 'retryBtn', 'diagBtn', 'backendLine', 'statusLine', 'captureCard',
+    'promptPreview', 'responsePreview', 'resultCard', 'modeBadge', 'errorCard',
+    'errorText', 'autoToggle', 'statusDot', 'skeletonCard', 'copyAnalysisBtn',
+    'captureAccordionToggle', 'captureAccordionContent', 'captureChevron', 'captureStatusBadge',
+    'settingsToggleBtn', 'settingsCloseBtn', 'settingsCard',
+    'responseStyleSelect', 'customInstructionsGroup', 'customInstructionsInput',
+    'analysisDepthSelect', 'documentTitle', 'documentContainer'
+  ].forEach((id) => { els[id] = $(id); });
 
   const CFG = () => globalThis.WDAIDT_CONFIG || {};
   const MSGS = () => globalThis.WDAIDT_MESSAGES || {};
@@ -21,6 +24,13 @@
   let lastCapture = null; // { prompt, response } for Retry
   let lastDiag = null; // diagnostics payload for the Copy diagnostics button
   let lastAnalysis = null; // parsed analysis result for Copy action
+
+  // V0.6 In-memory settings state
+  const settingsState = {
+    responseStyle: 'Professional and direct',
+    customInstructions: '',
+    analysisDepth: 'Balanced'
+  };
 
   function fpSummary(fp) {
     if (!fp) return 'n/a';
@@ -34,14 +44,14 @@
     return s.length > max ? s.slice(0, max) : s;
   }
 
-  function preview(text) {
-    const limit = CFG().PREVIEW_CHARS || 600;
-    const s = (text || '').trim();
-    if (!s) return '(empty)';
-    return s.length > limit ? s.slice(0, limit) + '…' : s;
+  function formatCapturedForDisplay(text, maxChars) {
+    const s = trimForBackend(text, maxChars);
+    return s || '(empty)';
   }
 
-  function setStatus(msg) { els.statusLine.textContent = msg; }
+  function setStatus(msg) {
+    if (els.statusLine) els.statusLine.textContent = msg;
+  }
 
   function setButtonLoading(loading) {
     if (!els.whyBtn) return;
@@ -52,8 +62,6 @@
     if (textSpan) textSpan.textContent = loading ? 'Analyzing…' : 'Why?';
   }
 
-  // Structured diagnostics: stage outcomes + field lengths only. Never logs
-  // prompt/response text, URLs, or anything identifying the conversation.
   function logEvent(event, info) {
     try {
       console.debug('[WDAIDT]', JSON.stringify({ event, ...(info || {}) }));
@@ -66,39 +74,53 @@
     if (els.skeletonCard) els.skeletonCard.hidden = true;
     if (els.resultCard) els.resultCard.hidden = true;
     if (els.statusDot) els.statusDot.className = 'status-dot error';
-    els.errorCard.hidden = false;
-    els.errorText.textContent = msg;
-    els.retryBtn.hidden = false;
+    if (els.errorCard) els.errorCard.hidden = false;
+    if (els.errorText) els.errorText.textContent = msg;
+    if (els.retryBtn) els.retryBtn.hidden = false;
   }
 
   function clearResult() {
-    els.resultCard.classList.remove('loading');
-    els.resultCard.hidden = true;
-    els.errorCard.hidden = true;
-    els.modeBadge.hidden = true;
-    els.captureCard.hidden = true;
+    if (els.resultCard) {
+      els.resultCard.classList.remove('loading');
+      els.resultCard.hidden = true;
+    }
+    if (els.errorCard) els.errorCard.hidden = true;
+    if (els.modeBadge) els.modeBadge.hidden = true;
+    if (els.captureCard) els.captureCard.hidden = true;
+    if (els.captureStatusBadge) els.captureStatusBadge.hidden = true;
     if (els.skeletonCard) els.skeletonCard.hidden = true;
     if (els.diagBtn) els.diagBtn.hidden = true;
+    if (els.documentTitle) els.documentTitle.textContent = '';
+    if (els.documentContainer) els.documentContainer.textContent = '';
     lastDiag = null;
     lastAnalysis = null;
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function copyDiagnostics() {
     if (!lastDiag) return;
     const text = JSON.stringify(lastDiag, null, 2);
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-      }
+    const ok = await copyToClipboard(text);
+    if (ok) {
       setStatus('Diagnostics copied — paste it in the project chat.');
-    } catch {
+    } else {
       setStatus('Could not copy. Select the error text manually.');
     }
   }
@@ -133,8 +155,6 @@
     }
   }
 
-  // If the tab was open before the extension was (re)loaded, the static
-  // content script may be missing. Inject it once, then retry.
   async function ensureContentScript(tabId) {
     try {
       if (chrome && chrome.scripting && chrome.scripting.executeScript) {
@@ -146,7 +166,7 @@
         return true;
       }
     } catch {
-      /* injection unavailable or blocked — fall through */
+      /* injection unavailable or blocked */
     }
     return false;
   }
@@ -275,7 +295,12 @@
     const body = {
       prompt: trimForBackend(prompt, maxP),
       response: trimForBackend(response, maxR),
-      request_id: requestId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))
+      request_id: requestId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+      response_style: settingsState.responseStyle,
+      custom_instructions: settingsState.responseStyle === 'Custom instructions'
+        ? settingsState.customInstructions
+        : null,
+      analysis_depth: settingsState.analysisDepth
     };
     if (!body.prompt || !body.response) {
       const err = new Error('Missing prompt or response.');
@@ -330,32 +355,261 @@
     }
   }
 
-  function renderList(ul, items) {
-    ul.textContent = '';
-    (items || []).forEach((t) => {
+  // =========================================================================
+  // V0.6 Dynamic Document Block Renderers (Safe DOM Creation)
+  // =========================================================================
+
+  function renderHeading(block) {
+    const rawLevel = parseInt(block.level, 10);
+    const level = (Number.isInteger(rawLevel) && rawLevel >= 1 && rawLevel <= 6) ? rawLevel : 2;
+    const el = document.createElement(`h${level}`);
+    el.className = `block-heading level-${level}`;
+    el.textContent = String(block.content || '');
+    return el;
+  }
+
+  function renderParagraph(block) {
+    const el = document.createElement('p');
+    el.className = 'block-paragraph';
+    el.textContent = String(block.content || '');
+    return el;
+  }
+
+  function renderList(block) {
+    const isOrdered = block.style === 'ordered';
+    const el = document.createElement(isOrdered ? 'ol' : 'ul');
+    el.className = 'block-list';
+    const items = Array.isArray(block.items) ? block.items : [];
+    items.forEach((itemText) => {
       const li = document.createElement('li');
-      li.textContent = t; // textContent: plain text only, per API agreement
-      ul.appendChild(li);
+      li.textContent = String(itemText || '');
+      el.appendChild(li);
     });
-    if (!ul.children.length) {
+    if (!el.children.length) {
       const li = document.createElement('li');
-      li.textContent = '(none)';
+      li.textContent = '(empty list)';
       li.className = 'muted';
-      ul.appendChild(li);
+      el.appendChild(li);
     }
+    return el;
+  }
+
+  function renderCode(block) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'block-code-wrapper';
+
+    const header = document.createElement('div');
+    header.className = 'block-code-header';
+
+    const lang = document.createElement('span');
+    lang.className = 'block-code-lang';
+    lang.textContent = String(block.language || 'code').trim();
+    header.appendChild(lang);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'ghost block-code-copy';
+    copyBtn.textContent = 'Copy';
+    copyBtn.title = 'Copy code snippet';
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const codeText = String(block.content || '');
+      const ok = await copyToClipboard(codeText);
+      if (ok) {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      }
+    });
+    header.appendChild(copyBtn);
+    wrapper.appendChild(header);
+
+    const pre = document.createElement('pre');
+    pre.className = 'block-code';
+    const code = document.createElement('code');
+    code.textContent = String(block.content || '');
+    pre.appendChild(code);
+    wrapper.appendChild(pre);
+
+    return wrapper;
+  }
+
+  function renderQuote(block) {
+    const el = document.createElement('blockquote');
+    el.className = 'block-quote';
+    el.textContent = String(block.content || '');
+    return el;
+  }
+
+  function renderTable(block) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'block-table-wrapper';
+
+    const table = document.createElement('table');
+    table.className = 'block-table';
+
+    const headers = Array.isArray(block.headers) ? block.headers : [];
+    if (headers.length > 0) {
+      const thead = document.createElement('thead');
+      const tr = document.createElement('tr');
+      headers.forEach((h) => {
+        const th = document.createElement('th');
+        th.textContent = String(h || '');
+        tr.appendChild(th);
+      });
+      thead.appendChild(tr);
+      table.appendChild(thead);
+    }
+
+    const rows = Array.isArray(block.rows) ? block.rows : [];
+    if (rows.length > 0) {
+      const tbody = document.createElement('tbody');
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        const cells = Array.isArray(row) ? row : [row];
+        cells.forEach((cell) => {
+          const td = document.createElement('td');
+          td.textContent = String(cell || '');
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+    }
+
+    wrapper.appendChild(table);
+    return wrapper;
+  }
+
+  function renderCallout(block) {
+    const wrapper = document.createElement('div');
+    let variant = String(block.variant || 'info').toLowerCase();
+    const validVariants = ['info', 'warning', 'caution', 'tip', 'note', 'important'];
+    if (!validVariants.includes(variant)) variant = 'info';
+
+    wrapper.className = `block-callout variant-${variant}`;
+
+    const header = document.createElement('div');
+    header.className = 'block-callout-header';
+
+    const badge = document.createElement('span');
+    badge.className = 'block-callout-badge';
+    badge.textContent = variant.toUpperCase();
+    header.appendChild(badge);
+
+    if (block.title) {
+      const title = document.createElement('span');
+      title.className = 'block-callout-title';
+      title.textContent = String(block.title);
+      header.appendChild(title);
+    }
+    wrapper.appendChild(header);
+
+    const content = document.createElement('div');
+    content.className = 'block-callout-content';
+    content.textContent = String(block.content || '');
+    wrapper.appendChild(content);
+
+    return wrapper;
+  }
+
+  function renderDivider() {
+    const el = document.createElement('hr');
+    el.className = 'block-divider';
+    return el;
+  }
+
+  function renderNextPrompt(block) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'block-next-prompt';
+
+    const header = document.createElement('div');
+    header.className = 'block-next-prompt-header';
+
+    const label = document.createElement('span');
+    label.className = 'block-next-prompt-label';
+    label.textContent = String(block.title || 'Suggested Next Prompt');
+    header.appendChild(label);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'ghost btn-mini block-next-prompt-copy';
+    copyBtn.textContent = 'Copy prompt';
+    copyBtn.title = 'Copy suggested follow-up prompt to clipboard';
+    const promptText = String(block.prompt || block.content || '').trim();
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await copyToClipboard(promptText);
+      if (ok) {
+        copyBtn.textContent = 'Copied!';
+        if (copyBtn.classList) copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy prompt';
+          if (copyBtn.classList) copyBtn.classList.remove('copied');
+        }, 1500);
+      }
+    });
+    header.appendChild(copyBtn);
+    wrapper.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'block-next-prompt-text';
+    body.textContent = promptText;
+    wrapper.appendChild(body);
+
+    return wrapper;
+  }
+
+  const BLOCK_RENDERERS = {
+    heading: renderHeading,
+    paragraph: renderParagraph,
+    list: renderList,
+    code: renderCode,
+    quote: renderQuote,
+    table: renderTable,
+    callout: renderCallout,
+    divider: renderDivider,
+    next_prompt: renderNextPrompt
+  };
+
+  function renderBlock(block) {
+    if (!block || typeof block !== 'object') return null;
+    const renderer = BLOCK_RENDERERS[block.type];
+    if (typeof renderer === 'function') {
+      return renderer(block);
+    }
+    // Graceful handling for unknown block types: do not crash
+    console.warn('[WDAIDT] Unknown or unsupported block type:', block.type);
+    if (typeof block.content === 'string' && block.content.trim()) {
+      return renderParagraph(block);
+    }
+    return null;
   }
 
   function renderResult(data) {
     lastAnalysis = data;
-    els.resultCard.classList.remove('loading');
-    els.whyText.textContent = data.why || '(empty)';
-    renderList(els.influencesList, data.influences);
-    renderList(els.assumptionsList, data.assumptions);
-    renderList(els.changeList, data.what_could_change);
-    els.modeBadge.hidden = true;
+    if (els.resultCard) {
+      els.resultCard.classList.remove('loading');
+      els.resultCard.hidden = false;
+    }
+
+    const doc = (data && data.analysis) ? data.analysis : data;
+    const title = (doc && doc.title) ? doc.title : 'Analysis';
+    if (els.documentTitle) {
+      els.documentTitle.textContent = title;
+    }
+
+    if (els.documentContainer) {
+      els.documentContainer.textContent = '';
+      const blocks = (doc && Array.isArray(doc.blocks)) ? doc.blocks : [];
+      blocks.forEach((block) => {
+        const domNode = renderBlock(block);
+        if (domNode) {
+          els.documentContainer.appendChild(domNode);
+        }
+      });
+    }
+
+    if (els.modeBadge) els.modeBadge.hidden = true;
     if (els.skeletonCard) els.skeletonCard.hidden = true;
     if (els.statusDot) els.statusDot.className = 'status-dot connected';
-    els.resultCard.hidden = false;
   }
 
   let latestRequestId = null; // newest analysis request; older responses are dropped
@@ -410,45 +664,60 @@
   }
 
   function showLoadingAnalysis() {
-    els.resultCard.classList.add('loading');
-    els.resultCard.hidden = false;
-    els.whyText.textContent = '';
-    els.influencesList.textContent = '';
-    els.assumptionsList.textContent = '';
-    els.changeList.textContent = '';
+    if (els.resultCard) {
+      els.resultCard.classList.add('loading');
+      els.resultCard.hidden = false;
+    }
+    if (els.documentTitle) els.documentTitle.textContent = '';
+    if (els.documentContainer) els.documentContainer.textContent = '';
     if (els.modeBadge) els.modeBadge.hidden = true;
     if (els.skeletonCard) els.skeletonCard.hidden = true;
   }
 
   async function runWhy() {
     setButtonLoading(true);
-    els.retryBtn.hidden = true;
+    if (els.retryBtn) els.retryBtn.hidden = true;
     clearResult();
     showLoadingAnalysis();
     try {
       setStatus('Capturing latest ChatGPT interaction…');
       const cap = await captureLatest();
-      lastCapture = cap;
-      els.captureCard.hidden = false;
-      els.promptPreview.textContent = preview(cap.prompt);
-      els.responsePreview.textContent = preview(cap.response);
+      const cfg = CFG();
+      const maxP = cfg.MAX_PROMPT_CHARS || 8000;
+      const maxR = cfg.MAX_RESPONSE_CHARS || 20000;
+      const normPrompt = trimForBackend(cap.prompt, maxP);
+      const normResponse = trimForBackend(cap.response, maxR);
+      const normalizedCap = { prompt: normPrompt, response: normResponse, meta: cap.meta };
+      lastCapture = normalizedCap;
+
+      if (els.captureCard) els.captureCard.hidden = false;
+      if (els.captureStatusBadge) els.captureStatusBadge.hidden = false;
+      if (els.promptPreview) els.promptPreview.textContent = normPrompt || '(empty)';
+      if (els.responsePreview) els.responsePreview.textContent = normResponse || '(empty)';
 
       const requestId = newRequestId();
       latestRequestId = requestId;
-      await analyzeCapture(cap, requestId);
+      await analyzeCapture(normalizedCap, requestId);
     } catch (e) {
       if (e && e.stage === 'capture') {
         logEvent('capture_error', { code: (e && e.code) || 'UNKNOWN' });
       }
       if (e && e.partial) {
-        // Partial capture: show what was found
-        els.captureCard.hidden = false;
-        els.promptPreview.textContent = e.partial.prompt
-          ? preview(e.partial.prompt)
-          : '(not captured)';
-        els.responsePreview.textContent = e.partial.response
-          ? preview(e.partial.response)
-          : '(not captured)';
+        const cfg = CFG();
+        const maxP = cfg.MAX_PROMPT_CHARS || 8000;
+        const maxR = cfg.MAX_RESPONSE_CHARS || 20000;
+        if (els.captureCard) els.captureCard.hidden = false;
+        if (els.captureStatusBadge) els.captureStatusBadge.hidden = false;
+        if (els.promptPreview) {
+          els.promptPreview.textContent = e.partial.prompt
+            ? trimForBackend(e.partial.prompt, maxP)
+            : '(not captured)';
+        }
+        if (els.responsePreview) {
+          els.responsePreview.textContent = e.partial.response
+            ? trimForBackend(e.partial.response, maxR)
+            : '(not captured)';
+        }
       }
       showError((e && e.message) || 'Analysis failed. Please try again.');
       setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
@@ -457,28 +726,33 @@
     }
   }
 
-  // Auto Analyze: content script reports a newly settled exchange. Debounce
-  // rapid triggers, skip repeats of the same exchange, then analyze with the
-  // same pipeline (and stale guard) as manual Why?.
   function autoHash(prompt, response) {
     return `${(prompt || '').length}:${(response || '').length}:` +
       `${(prompt || '').slice(-120)}|${(response || '').slice(-120)}`;
   }
 
   async function runAuto(prompt, response) {
-    if (!els.autoToggle.checked) return;
+    if (!els.autoToggle || !els.autoToggle.checked) return;
     const h = autoHash(prompt, response);
     if (h === lastAutoHash) return;
     lastAutoHash = h;
     clearResult();
     showLoadingAnalysis();
     try {
-      const cap = { prompt: (prompt || '').trim(), response: (response || '').trim() };
-      if (!cap.prompt || !cap.response) return;
+      const cfg = CFG();
+      const maxP = cfg.MAX_PROMPT_CHARS || 8000;
+      const maxR = cfg.MAX_RESPONSE_CHARS || 20000;
+      const normPrompt = trimForBackend(prompt, maxP);
+      const normResponse = trimForBackend(response, maxR);
+      if (!normPrompt || !normResponse) return;
+      const cap = { prompt: normPrompt, response: normResponse };
       lastCapture = cap;
-      els.captureCard.hidden = false;
-      els.promptPreview.textContent = preview(cap.prompt);
-      els.responsePreview.textContent = preview(cap.response);
+
+      if (els.captureCard) els.captureCard.hidden = false;
+      if (els.captureStatusBadge) els.captureStatusBadge.hidden = false;
+      if (els.promptPreview) els.promptPreview.textContent = normPrompt;
+      if (els.responsePreview) els.responsePreview.textContent = normResponse;
+
       const requestId = newRequestId();
       latestRequestId = requestId;
       await analyzeCapture(cap, requestId);
@@ -508,72 +782,142 @@
     }
   }
 
+  // =========================================================================
+  // V0.6 Markdown Export for Copy Action
+  // =========================================================================
+
+  function exportDocumentToMarkdown(doc) {
+    if (!doc) return '';
+    const lines = [];
+    if (doc.title) {
+      lines.push(`# ${doc.title}\n`);
+    }
+    const blocks = Array.isArray(doc.blocks) ? doc.blocks : [];
+    blocks.forEach((b) => {
+      if (!b) return;
+      switch (b.type) {
+        case 'heading': {
+          const lvl = Math.max(1, Math.min(6, parseInt(b.level, 10) || 2));
+          lines.push(`${'#'.repeat(lvl)} ${b.content || ''}\n`);
+          break;
+        }
+        case 'paragraph': {
+          lines.push(`${b.content || ''}\n`);
+          break;
+        }
+        case 'list': {
+          const isOrdered = b.style === 'ordered';
+          (b.items || []).forEach((item, idx) => {
+            lines.push(isOrdered ? `${idx + 1}. ${item}` : `- ${item}`);
+          });
+          lines.push('');
+          break;
+        }
+        case 'code': {
+          const lang = b.language || '';
+          lines.push(`\`\`\`${lang}\n${b.content || ''}\n\`\`\`\n`);
+          break;
+        }
+        case 'quote': {
+          const quoted = String(b.content || '')
+            .split('\n')
+            .map((l) => `> ${l}`)
+            .join('\n');
+          lines.push(`${quoted}\n`);
+          break;
+        }
+        case 'table': {
+          const headers = b.headers || [];
+          const rows = b.rows || [];
+          if (headers.length) {
+            lines.push(`| ${headers.join(' | ')} |`);
+            lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
+            rows.forEach((row) => {
+              const cells = Array.isArray(row) ? row : [row];
+              lines.push(`| ${cells.join(' | ')} |`);
+            });
+            lines.push('');
+          }
+          break;
+        }
+        case 'callout': {
+          const variant = (b.variant || 'NOTE').toUpperCase();
+          const title = b.title ? ` ${b.title}` : '';
+          lines.push(`> [!${variant}]${title}`);
+          const calloutBody = String(b.content || '')
+            .split('\n')
+            .map((l) => `> ${l}`)
+            .join('\n');
+          lines.push(`${calloutBody}\n`);
+          break;
+        }
+        case 'next_prompt': {
+          const pText = b.prompt || b.content || '';
+          const title = b.title || 'Suggested Next Prompt';
+          lines.push(`### ${title}\n`);
+          lines.push(`> ${pText.split('\n').join('\n> ')}\n`);
+          break;
+        }
+        case 'divider': {
+          lines.push('---\n');
+          break;
+        }
+        default: {
+          if (b.content) lines.push(`${b.content}\n`);
+          break;
+        }
+      }
+    });
+    return lines.join('\n').trim();
+  }
+
   async function copyAnalysis() {
     if (!lastAnalysis) return;
-    const lines = [];
-    if (lastAnalysis.why) {
-      lines.push('### Why this answer?');
-      lines.push(lastAnalysis.why);
-      lines.push('');
-    }
-    if (lastAnalysis.influences && lastAnalysis.influences.length) {
-      lines.push('### Influences');
-      lastAnalysis.influences.forEach((item) => lines.push(`- ${item}`));
-      lines.push('');
-    }
-    if (lastAnalysis.assumptions && lastAnalysis.assumptions.length) {
-      lines.push('### Assumptions');
-      lastAnalysis.assumptions.forEach((item) => lines.push(`- ${item}`));
-      lines.push('');
-    }
-    if (lastAnalysis.what_could_change && lastAnalysis.what_could_change.length) {
-      lines.push('### What could change it?');
-      lastAnalysis.what_could_change.forEach((item) => lines.push(`- ${item}`));
-      lines.push('');
-    }
-    const text = lines.join('\n').trim();
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-      }
-      if (els.copyAnalysisBtn) {
-        const orig = els.copyAnalysisBtn.textContent;
-        els.copyAnalysisBtn.textContent = 'Copied!';
-        els.copyAnalysisBtn.classList.add('copied');
-        setTimeout(() => {
-          if (els.copyAnalysisBtn) {
-            els.copyAnalysisBtn.textContent = orig;
-            els.copyAnalysisBtn.classList.remove('copied');
-          }
-        }, 1800);
-      }
-    } catch {
+    const doc = lastAnalysis.analysis || lastAnalysis;
+    const text = exportDocumentToMarkdown(doc);
+    if (!text) return;
+
+    const ok = await copyToClipboard(text);
+    if (ok && els.copyAnalysisBtn) {
+      const orig = els.copyAnalysisBtn.textContent;
+      els.copyAnalysisBtn.textContent = 'Copied!';
+      els.copyAnalysisBtn.classList.add('copied');
+      setTimeout(() => {
+        if (els.copyAnalysisBtn) {
+          els.copyAnalysisBtn.textContent = orig;
+          els.copyAnalysisBtn.classList.remove('copied');
+        }
+      }, 1800);
+    } else if (!ok) {
       setStatus('Could not copy analysis.');
+    }
+  }
+
+  let isCaptureExpanded = false;
+
+  function setCaptureExpanded(expanded) {
+    isCaptureExpanded = !!expanded;
+    if (els.captureAccordionContent) {
+      els.captureAccordionContent.hidden = !isCaptureExpanded;
+    }
+    if (els.captureChevron) {
+      els.captureChevron.textContent = isCaptureExpanded ? '\u25B2' : '\u25BC';
+    }
+    if (els.captureAccordionToggle) {
+      els.captureAccordionToggle.setAttribute('aria-expanded', String(isCaptureExpanded));
     }
   }
 
   function initAccordion() {
     if (!els.captureAccordionToggle) return;
+    setCaptureExpanded(false);
     els.captureAccordionToggle.addEventListener('click', () => {
-      const content = els.captureAccordionContent;
-      if (!content) return;
-      const isHidden = content.hidden;
-      content.hidden = !isHidden;
-      if (els.captureChevron) {
-        els.captureChevron.textContent = isHidden ? '\u25BC' : '\u25B2';
-      }
+      setCaptureExpanded(!isCaptureExpanded);
     });
     els.captureAccordionToggle.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        els.captureAccordionToggle.click();
+        setCaptureExpanded(!isCaptureExpanded);
       }
     });
   }
@@ -589,14 +933,14 @@
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(t);
       if (res.ok) {
-        els.backendLine.textContent = `Backend: reachable at ${base}`;
+        if (els.backendLine) els.backendLine.textContent = `Backend: reachable at ${base}`;
         if (els.statusDot) els.statusDot.className = 'status-dot connected';
       } else {
-        els.backendLine.textContent = `Backend: reachable but unhealthy (${res.status})`;
+        if (els.backendLine) els.backendLine.textContent = `Backend: reachable but unhealthy (${res.status})`;
         if (els.statusDot) els.statusDot.className = 'status-dot error';
       }
     } catch {
-      els.backendLine.textContent = `Backend: not reachable at ${base} — start it to enable analysis`;
+      if (els.backendLine) els.backendLine.textContent = `Backend: not reachable at ${base} — start it to enable analysis`;
       if (els.statusDot) els.statusDot.className = 'status-dot error';
     }
   }
@@ -613,16 +957,17 @@
           try {
             await chrome.tabs.sendMessage(t.id, { type });
           } catch {
-            /* tab without content script — watcher reads storage on load */
+            /* tab without content script */
           }
         }
       }
     } catch {
-      /* tabs API unavailable — content scripts fall back to storage */
+      /* tabs API unavailable */
     }
   }
 
   async function initAutoToggle() {
+    if (!els.autoToggle) return;
     try {
       const stored = await chrome.storage.local.get('wdaidt_auto_analyze');
       els.autoToggle.checked = stored.wdaidt_auto_analyze === true;
@@ -638,6 +983,100 @@
     });
   }
 
+  // =========================================================================
+  // V0.6 Settings UI & Persistence
+  // =========================================================================
+
+  async function initSettings() {
+    // 1. Load preferences from chrome.storage.local
+    try {
+      const stored = await chrome.storage.local.get([
+        'wdaidt_response_style',
+        'wdaidt_custom_instructions',
+        'wdaidt_analysis_depth'
+      ]);
+      if (stored.wdaidt_response_style) {
+        settingsState.responseStyle = stored.wdaidt_response_style;
+      }
+      if (stored.wdaidt_custom_instructions != null) {
+        settingsState.customInstructions = stored.wdaidt_custom_instructions;
+      }
+      if (stored.wdaidt_analysis_depth) {
+        settingsState.analysisDepth = stored.wdaidt_analysis_depth;
+      }
+    } catch {
+      /* fallback to defaults */
+    }
+
+    // 2. Synchronize UI controls
+    if (els.responseStyleSelect) {
+      els.responseStyleSelect.value = settingsState.responseStyle;
+    }
+    if (els.customInstructionsInput) {
+      els.customInstructionsInput.value = settingsState.customInstructions;
+    }
+    if (els.customInstructionsGroup) {
+      els.customInstructionsGroup.hidden = settingsState.responseStyle !== 'Custom instructions';
+    }
+    if (els.analysisDepthSelect) {
+      els.analysisDepthSelect.value = settingsState.analysisDepth;
+    }
+
+    // 3. Attach event listeners
+    if (els.settingsToggleBtn) {
+      els.settingsToggleBtn.addEventListener('click', () => {
+        if (!els.settingsCard) return;
+        const willShow = els.settingsCard.hidden;
+        els.settingsCard.hidden = !willShow;
+        els.settingsToggleBtn.setAttribute('aria-expanded', String(willShow));
+      });
+    }
+
+    if (els.settingsCloseBtn) {
+      els.settingsCloseBtn.addEventListener('click', () => {
+        if (!els.settingsCard) return;
+        els.settingsCard.hidden = true;
+        if (els.settingsToggleBtn) {
+          els.settingsToggleBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    if (els.responseStyleSelect) {
+      els.responseStyleSelect.addEventListener('change', async () => {
+        const selected = els.responseStyleSelect.value;
+        settingsState.responseStyle = selected;
+        if (els.customInstructionsGroup) {
+          els.customInstructionsGroup.hidden = selected !== 'Custom instructions';
+        }
+        try {
+          await chrome.storage.local.set({ wdaidt_response_style: selected });
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    if (els.customInstructionsInput) {
+      els.customInstructionsInput.addEventListener('input', async () => {
+        const val = els.customInstructionsInput.value;
+        settingsState.customInstructions = val;
+        try {
+          await chrome.storage.local.set({ wdaidt_custom_instructions: val });
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    if (els.analysisDepthSelect) {
+      els.analysisDepthSelect.addEventListener('change', async () => {
+        const selected = els.analysisDepthSelect.value;
+        settingsState.analysisDepth = selected;
+        try {
+          await chrome.storage.local.set({ wdaidt_analysis_depth: selected });
+        } catch { /* non-fatal */ }
+      });
+    }
+  }
+
+  // Global listeners
   try {
     if (chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
       chrome.runtime.onMessage.addListener((message) => {
@@ -649,11 +1088,37 @@
     /* non-fatal */
   }
 
-  els.whyBtn.addEventListener('click', runWhy);
-  els.retryBtn.addEventListener('click', runWhy);
+  if (els.whyBtn) els.whyBtn.addEventListener('click', runWhy);
+  if (els.retryBtn) els.retryBtn.addEventListener('click', runWhy);
   if (els.diagBtn) els.diagBtn.addEventListener('click', copyDiagnostics);
   if (els.copyAnalysisBtn) els.copyAnalysisBtn.addEventListener('click', copyAnalysis);
+
   initAccordion();
   checkBackend();
   initAutoToggle();
+  initSettings();
+
+  // Export for testing under Node.js test runner
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      renderBlock,
+      renderHeading,
+      renderParagraph,
+      renderList,
+      renderCode,
+      renderQuote,
+      renderTable,
+      renderCallout,
+      renderDivider,
+      renderNextPrompt,
+      BLOCK_RENDERERS,
+      exportDocumentToMarkdown,
+      settingsState,
+      trimForBackend,
+      formatCapturedForDisplay,
+      setCaptureExpanded,
+      getCaptureExpanded: () => isCaptureExpanded,
+      initAccordion
+    };
+  }
 })();

@@ -138,6 +138,43 @@ body {
   white-space: nowrap;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.icon-btn[aria-expanded="true"] {
+  background: var(--control-bg);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
 .badge-version {
   font: 600 10px var(--font-code);
   text-transform: uppercase;
@@ -449,6 +486,12 @@ button:disabled {
   color: var(--text-primary);
 }
 
+.accordion-header:focus-visible {
+  outline: 2px solid var(--accent-subtle);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
 .accordion-title {
   display: flex;
   align-items: center;
@@ -466,8 +509,14 @@ button:disabled {
 
 .accordion-content {
   margin-top: var(--space-2);
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  padding-right: 4px;
 }
 
 .preview-tag {
@@ -503,8 +552,7 @@ button:disabled {
   margin: 0;
   font: var(--text-sm)/1.6 var(--font-code);
   color: var(--text-secondary);
-  max-height: 180px;
-  overflow-y: auto;
+  user-select: text;
 }
 
 /* ==========================================================================
@@ -630,27 +678,6 @@ button:disabled {
 .card li:hover {
   background: var(--bg-hover);
   border-color: var(--border-default);
-}
-
-/* Influences list accent */
-#influencesList li {
-  border-left: 2px solid var(--border-strong);
-}
-
-/* Assumptions list accent */
-#assumptionsList li {
-  border-left: 2px solid var(--border-strong);
-}
-
-/* What could change list accent */
-#changeList li {
-  border-left: 2px solid var(--border-strong);
-}
-
-.card li.muted {
-  border-left-color: var(--border-subtle);
-  color: var(--text-disabled);
-  font-style: italic;
 }
 
 /* Quick Copy Toolbar */
@@ -787,4 +814,376 @@ footer a:hover {
 .status-backend {
   font: var(--text-sm) var(--font-ui);
   color: var(--text-muted);
+}
+
+/* ==========================================================================
+   V0.6 Settings Panel (Obsidian Aesthetic)
+   ========================================================================== */
+.settings-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  animation: contentFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-2);
+}
+
+.settings-header h2 {
+  font: 600 var(--text-sm) var(--font-ui);
+  color: var(--text-primary);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setting-label {
+  font: 600 var(--text-xs) var(--font-ui);
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.setting-desc {
+  font: var(--text-xs) var(--font-ui);
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.select-control {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: 5px 8px;
+  font: var(--text-sm) var(--font-ui);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.select-control:focus {
+  border-color: var(--focus-ring);
+}
+
+.select-control option {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.textarea-control {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: 6px 8px;
+  font: var(--text-xs)/1.5 var(--font-ui);
+  outline: none;
+  resize: vertical;
+  min-height: 54px;
+  transition: border-color 0.15s ease;
+}
+
+.textarea-control:focus {
+  border-color: var(--focus-ring);
+}
+
+.textarea-control::placeholder {
+  color: var(--text-disabled);
+}
+
+/* ==========================================================================
+   V0.6 Dynamic Document Content Blocks (Obsidian-inspired)
+   ========================================================================== */
+.document-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.document-title {
+  font: 600 var(--text-md) var(--font-ui);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.document-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Heading Block */
+.block-heading {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  line-height: 1.35;
+}
+
+.block-heading.level-1,
+.block-heading.level-2 {
+  font-size: var(--text-md);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 3px;
+}
+
+.block-heading.level-3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.block-heading.level-4,
+.block-heading.level-5,
+.block-heading.level-6 {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Paragraph Block */
+.block-paragraph {
+  font: var(--text-sm)/1.6 var(--font-ui);
+  color: var(--text-primary);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* List Block */
+.block-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font: var(--text-sm)/1.6 var(--font-ui);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.block-list li {
+  margin: 0;
+  padding: 0;
+}
+
+/* Code Block */
+.block-code-wrapper {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.block-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.block-code-lang {
+  font: 600 10px var(--font-code);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.block-code-copy {
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.block-code {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font: var(--text-xs)/1.5 var(--font-code);
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Quote Block */
+.block-quote {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--border-strong);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: italic var(--text-sm)/1.6 var(--font-ui);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  white-space: pre-wrap;
+}
+
+/* Table Block */
+.block-table-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.block-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--text-xs)/1.5 var(--font-ui);
+  text-align: left;
+}
+
+.block-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.block-table th:last-child {
+  border-right: 0;
+}
+
+.block-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.block-table td:last-child {
+  border-right: 0;
+}
+
+.block-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Callout Block */
+.block-callout {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  border-left-width: 3px;
+  background: var(--bg-secondary);
+}
+
+.block-callout.variant-info {
+  border-left-color: var(--status-info);
+}
+
+.block-callout.variant-warning {
+  border-left-color: var(--status-warning);
+}
+
+.block-callout.variant-caution {
+  border-left-color: var(--status-error);
+}
+
+.block-callout.variant-tip {
+  border-left-color: var(--status-success);
+}
+
+.block-callout.variant-note {
+  border-left-color: var(--text-muted);
+}
+
+.block-callout.variant-important {
+  border-left-color: #C084FC;
+}
+
+.block-callout-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.block-callout-badge {
+  font: 700 9px var(--font-code);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.block-callout-title {
+  font: 600 var(--text-xs) var(--font-ui);
+  color: var(--text-primary);
+}
+
+.block-callout-content {
+  font: var(--text-sm)/1.5 var(--font-ui);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+/* Divider Block */
+.block-divider {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--space-1) 0;
+}
+
+/* Suggested Next Prompt Block (Action-oriented Follow-up) */
+.block-next-prompt {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--status-info);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: var(--space-2) 0;
+}
+
+.block-next-prompt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.block-next-prompt-label {
+  font: 600 11px var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--status-info);
+}
+
+.block-next-prompt-copy {
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.block-next-prompt-text {
+  padding: var(--space-2) var(--space-3);
+  font: var(--text-sm)/1.6 var(--font-ui);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  user-select: all;
 }

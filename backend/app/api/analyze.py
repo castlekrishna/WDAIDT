@@ -1,4 +1,4 @@
-"""API Router for /analyze and /health endpoints."""
+"""API Router for /analyze and /health endpoints in WDAIDT V0.6."""
 
 import logging
 import time
@@ -26,11 +26,12 @@ async def health_check():
 
 @router.post("/analyze", response_model=AnalysisResult)
 async def analyze_interaction(request: AnalysisRequest):
-    """Analyze the interaction pair (prompt + response) and return structured debug insights."""
+    """Analyze the interaction pair and return a flexible structured document."""
     started = time.perf_counter()
     prompt_len = len(request.prompt)
     response_len = len(request.response)
-    # Size limits validation per API agreement (Section 2 & 4)
+
+    # Size limits validation per API agreement
     if prompt_len > MAX_PROMPT_CHARS or response_len > MAX_RESPONSE_CHARS:
         logger.warning(
             "analyze rejected code=PAYLOAD_TOO_LARGE prompt_len=%d response_len=%d",
@@ -60,12 +61,18 @@ async def analyze_interaction(request: AnalysisRequest):
         prompt=request.prompt,
         response=request.response,
         request_id=request.request_id,
+        response_style=request.response_style,
+        custom_instructions=request.custom_instructions,
+        analysis_depth=request.analysis_depth,
     )
+
+    block_count = len(result.analysis.blocks) if result.analysis and result.analysis.blocks else 0
     logger.info(
-        "analyze ok request_id=%s prompt_len=%d response_len=%d latency_ms=%d",
+        "analyze ok request_id=%s prompt_len=%d response_len=%d blocks=%d latency_ms=%d",
         request.request_id,
         prompt_len,
         response_len,
+        block_count,
         int((time.perf_counter() - started) * 1000),
     )
     return result

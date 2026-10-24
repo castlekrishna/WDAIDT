@@ -51,7 +51,7 @@ test('content script captures only (no fetch, no analysis)', () => {
 
 test('side panel has Why?, previews, result sections and safe rendering', () => {
   const html = read(path.join(ext, 'src', 'sidepanel', 'index.html'));
-  for (const id of ['whyBtn', 'promptPreview', 'responsePreview', 'whyText', 'influencesList', 'assumptionsList', 'changeList', 'autoToggle']) {
+  for (const id of ['whyBtn', 'promptPreview', 'responsePreview', 'documentTitle', 'documentContainer', 'autoToggle']) {
     assert.ok(html.includes(`id="${id}"`), `index.html missing #${id}`);
   }
   const app = read(path.join(ext, 'src', 'sidepanel', 'app.js'));

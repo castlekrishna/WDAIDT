@@ -13,7 +13,27 @@ const WDAIDT_CONFIG = Object.freeze({
   MAX_PROMPT_CHARS: 8000,
   MAX_RESPONSE_CHARS: 20000,
   // UI preview limits (captured text preview in sidebar, not the API limit).
-  PREVIEW_CHARS: 600
+  PREVIEW_CHARS: 600,
+
+  // V0.6 Response Style presets
+  RESPONSE_STYLES: [
+    'Friendly and conversational',
+    'Lighthearted and witty',
+    'Casual and natural',
+    'Professional and direct',
+    'Formal and precise',
+    'Academic and analytical',
+    'Custom instructions'
+  ],
+  DEFAULT_RESPONSE_STYLE: 'Professional and direct',
+
+  // V0.6 Analysis Depth presets
+  ANALYSIS_DEPTHS: [
+    'Brief',
+    'Balanced',
+    'Detailed'
+  ],
+  DEFAULT_ANALYSIS_DEPTH: 'Balanced'
 });
 
 function wdaidtAnalyzeUrl(baseUrl) {
@@ -35,4 +55,8 @@ if (typeof globalThis !== 'undefined') {
   globalThis.WDAIDT_CONFIG = WDAIDT_CONFIG;
   globalThis.wdaidtAnalyzeUrl = wdaidtAnalyzeUrl;
   globalThis.wdaidtHealthUrl = wdaidtHealthUrl;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { WDAIDT_CONFIG, wdaidtAnalyzeUrl, wdaidtHealthUrl };
 }

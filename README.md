@@ -1,8 +1,8 @@
 # Why Did AI Do That? (WDAIDT)
 
-Browser extension for ChatGPT that explains *what appears to have shaped* an AI response — factors, assumptions, and what could change the answer. Sidebar-first, manual or automatic.
+Browser extension for ChatGPT that explains *what appears to have shaped* an AI response. Sidebar-first, manual or automatic.
 
-> Scope note: **V0.1** through **V0.4** are complete ✅. **V0.5** lands UI modernization, adaptive light/dark theme, interactive toggle switch, and collapsible preview drawer.
+> Scope note: **V0.1** through **V0.5** are complete ✅. **V0.6** lands the **Adaptive Analysis Architecture & Dynamic Document Renderer**, replacing rigid fixed fields with flexible LLM-generated documents, 8 extensible content block types, persistent Response Style presets, and Analysis Depth controls.
 
 ---
 
@@ -50,11 +50,27 @@ Browser extension for ChatGPT that explains *what appears to have shaped* an AI 
 - [x] Adaptive dual-theme system (`styles.css`) — auto light/dark mode aligned with ChatGPT's UI and OS color scheme
 - [x] Modern iOS/Tailwind-style Auto toggle switch with smooth pill sliding animation
 - [x] Dynamic status indicator with multi-state pulsing dot (Connected, Analyzing, Checking, Error)
-- [x] Hero Analysis Presentation — highlighted "Why this answer?" summary box + color-accented cards for Influences, Assumptions, and What could change it
+- [x] Hero Analysis Presentation — highlighted "Why this answer?" summary box + color-accented cards
 - [x] One-click Markdown copy button for complete formatted analysis export
 - [x] Collapsible captured interaction drawer with speech-bubble badges and clean monospace previews
 - [x] Skeleton shimmer loading animation during analysis requests
 - [x] Version-based documentation convention (`docs/V0.1.md` through `docs/V0.5.md`)
+
+### V0.6 — Adaptive Analysis Architecture, Dynamic Document Renderer & Quality Overhaul ✅
+- [x] **Flexible Document Architecture**: Replaced the rigid 4-category analysis schema with validated `AnalysisDocument` envelopes containing an ordered collection of validated content blocks.
+- [x] **9 Content Block Types**: Full Pydantic and DOM support for `heading` (levels 1-6), `paragraph`, `list` (ordered/unordered), `code` (with copy button), `quote`, responsive `table`, `callout` (6 visual variants), `next_prompt` (ready-to-use follow-up prompt with copy button), and section `divider`.
+- [x] **Analysis Quality & Diagnostic Focus**: Master prompt explicitly instructs the model NOT to summarize or narrate the original response, but to diagnose missing constraints, omitted trade-offs, and concrete next actions.
+- [x] **Authoritative Master Prompt**: Base system prompt establishing WDAIDT's role, epistemic boundaries (hedged interpretations without claiming access to model weights), anti-narration prohibitions, and passive-data protection against prompt injection.
+- [x] **Runtime Prompt Composition**: Composes master prompt with user-selected Response Style, custom instructions, and Analysis Depth at request time.
+- [x] **Persistent Settings UI**: Side panel settings drawer with 7 Response Style presets (Friendly, Witty, Casual, Professional, Formal, Academic, Custom) and 3 Analysis Depth settings (Brief, Balanced, Detailed) saved to `chrome.storage.local`.
+- [x] **Safe Dynamic Renderer**: Pure DOM `textContent` rendering without arbitrary HTML injection, safe code snippet copying, and rich Markdown export.
+- [x] **Sidebar Space Optimization**: `#captureCard` is collapsed by default upon opening the side panel, prioritizing analysis document visibility above the fold.
+- [x] **Full-Text Independently Scrollable Container**: Removed the 600-character preview truncation (`PREVIEW_CHARS`) from the expanded view. Captured prompt and response are displayed in full inside a bounded, independently scrollable container (`max-height: 240px; overflow-y: auto; overscroll-behavior-y: contain`).
+- [x] **Data Integrity & Payload Alignment**: Audited prompt/response transmission end-to-end. Diagnosed the root cause of ellipsis truncation ("Lists, tuple...") as UI-only string truncation in `app.js`. Aligned displayed text with request payload via `trimForBackend` (matching backend limits `MAX_PROMPT_CHARS = 8000` and `MAX_RESPONSE_CHARS = 20000`).
+- [x] **Expansion State Preservation**: Starting, finishing, or failing an analysis preserves the user's current accordion toggle state.
+- [x] **Accessibility & Keyboard Navigation**: Full keyboard toggling (`Enter` / `Space`), `aria-expanded`, `aria-controls`, `role="button"`, and high-contrast `:focus-visible` styling.
+- [x] **Comprehensive Test Verification**: 36 backend tests (`pytest tests/backend/`) and 68 extension tests (`node --test tests/extension/*.test.js`) passing cleanly (104 tests total).
+- [x] **Milestone Documentation**: Comprehensive reference in `docs/V0.6.md`.
 
 ---
 
@@ -64,30 +80,34 @@ Browser extension for ChatGPT that explains *what appears to have shaped* an AI 
 extension/
   manifest.json
   src/
-    content/chatgpt.js            # Lidiya · V0.1 & V0.4 ✅ — robust capture engine
-    sidepanel/                    # Lidiya · V0.1 & V0.5 ✅ — modernized UI + light/dark themes
-    shared/messages.js            # Lidiya · V0.1 ✅ — message types
-    shared/config.js              # Lidiya · V0.1 ✅ — backend URL + limits
-    background/service-worker.js  # Lidiya · V0.1 ✅ — side-panel wiring
-  assets/                         # icons (V0.3 polish)
-backend/                          # Krishna · V0.2 ✅ (FastAPI + Gemini)
+    content/chatgpt.js            # Capture engine & DOM mutation watcher
+    sidepanel/                    # Side panel UI, Obsidian styles, & dynamic document renderer
+      app.js                      # Controller, block renderers, & settings persistence
+      index.html                  # Side panel layout, settings panel, & document container
+      styles.css                  # Obsidian pitch-black theme & block typography
+    shared/messages.js            # Message types & stale-result guards
+    shared/config.js              # Backend URLs, limits, & style/depth presets
+    background/service-worker.js  # Side panel runtime wiring
+  assets/                         # Icons (16/48/128)
+backend/
   app/
     main.py                       # FastAPI entry point, CORS, error handlers
     api/analyze.py                # /analyze and /health routes
-    analysis/analyzer.py          # Gemini engine & fallback
-    analysis/prompts.py           # Hedged wording prompts
-    models/analysis.py            # Pydantic schemas
+    analysis/analyzer.py          # Gemini engine, structured JSON validation & fallback
+    analysis/prompts.py           # Master prompt & runtime style/depth composition
+    models/analysis.py            # Pydantic schemas for document and content blocks
   requirements.txt
   .env.example
 tests/
-  extension/                      # Lidiya · 46 tests (5 smoke + 31 capture + 6 auto + 4 pipeline)
-  backend/                        # Krishna · 20 unit tests
+  extension/                      # 68 tests (smoke, capture, auto, pipeline, dynamic renderer, capture audit)
+  backend/                        # 36 unit tests (schema, block types, quality evaluation, limits, errors, retries)
 docs/
   V0.1.md                         # V0.1 extension handoff notes
   V0.2.md                         # V0.2 backend handoff notes
   V0.3.md                         # V0.3 extension + capture-reliability notes
   V0.4.md                         # V0.4 multi-turn SPA capture hardening notes
   V0.5.md                         # V0.5 UI modernization & dual-theme notes
+  V0.6.md                         # V0.6 Adaptive analysis architecture & quality overhaul notes
 ```
 
 ---
@@ -114,28 +134,29 @@ python -m pytest tests/backend/ -v
 1. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked** → select `extension/`.
 2. Open a ChatGPT conversation (`https://chatgpt.com`).
 3. Click the extension icon in Chrome to open the Side Panel.
-4. Click **Why?** to analyze the interaction. Toggle **Auto** ON to analyze new replies automatically once streaming finishes.
-5. If capture fails, press **Copy diagnostics** in the error card and share the output — it fingerprints the page's actual markup.
+4. Click the gear icon to customize **Response Style** and **Analysis Depth**.
+5. Click **Why?** to analyze the interaction. Toggle **Auto** ON to analyze new replies automatically once streaming finishes.
+6. If capture fails, press **Copy diagnostics** in the error card to inspect page markup fingerprinting.
 
 ```powershell
-node --test tests/extension/capture.test.js tests/extension/auto.test.js tests/extension/day1.smoke.test.js tests/extension/pipeline.test.js
+node --test tests/extension/*.test.js
 ```
-(46 passing: capture reliability incl. accessibility-noise exclusion, auto trigger + stale guard, manifest/config/UI contracts, capture-to-request pipeline, multi-turn SPA navigation, and feedback survey filtering.)
 
 ---
 
-## API Contract (Locked)
-- `POST /analyze` `{prompt, response, request_id?}` → `{request_id, why, influences[], assumptions[], what_could_change[]}`
+## API Contract (V0.6)
+- `POST /analyze` `{prompt, response, request_id?, response_style?, custom_instructions?, analysis_depth?}` → `{request_id, analysis: {title, blocks: [...]}}`
 - `GET /health` → `{"status":"ok"}`
 - Limits: prompt ≤ 8,000 chars, response ≤ 20,000 chars (413 if exceeded).
 - Standardized error shape: `{ "error": { "code": "...", "message": "..." } }`.
-- Plain-text, hedged wording only ("appears to", "seems to").
+- Supported block types: `heading`, `paragraph`, `list`, `code`, `quote`, `table`, `callout`, `divider`.
+- Safe text, hedged wording ("appears to", "seems to").
 
 ---
 
 ## Privacy & Security
 - Prompts and responses sent to the backend are processed in-memory for Gemini analysis and are **never stored** in any database.
-- Full prompt text is never logged to disk or console.
+- Full prompt text is never logged to disk or console (lengths only).
 - The `GEMINI_API_KEY` remains strictly in the backend local environment (`.env`) and is never sent to or accessible by the browser extension.
 
 ---
