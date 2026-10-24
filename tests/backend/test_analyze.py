@@ -781,3 +781,234 @@ def test_quality_eval_creative_task_satisfies_goal(monkeypatch):
     doc = res.json()["analysis"]
     assert any("satisfies all explicit constraints" in b.get("content", "") for b in doc["blocks"])
 
+
+
+# =========================================================================
+# V0.7 Multi-Context Analysis Tests
+# =========================================================================
+
+from app.models.analysis import ContextExchange, MAX_CONTEXT_EXCHANGES, MAX_CONTEXT_TOTAL_CHARS
+from app.analysis.prompts import build_analysis_user_prompt
+
+
+def test_analyze_without_context_preserves_compatibility(monkeypatch):
+    """V0.6 backwards-compatibility: request without context field succeeds."""
+    monkeypatch.setenv("MOCK_ANALYSIS", "true")
+    payload = {
+        "prompt": "How do I convert a list of strings to integers in Python?",
+        "response": "You can use a list comprehension: `[int(x) for x in strings]` or `list(map(int, strings))`.",
+        "request_id": "compat-req-no-ctx",
+    }
+    res = client.post("/analyze", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["request_id"] == "compat-req-no-ctx"
+    assert "analysis" in data
+
+
+def test_analyze_with_empty_context(monkeypatch):
+    """Empty context list is explicitly valid and handled cleanly."""
+    monkeypatch.setenv("MOCK_ANALYSIS", "true")
+    payload = {
+        "prompt": "What is Python's GIL?",
+        "response": "The Global Interpreter Lock is a mutex that protects access to Python objects.",
+        "context": [],
+        "request_id": "empty-ctx-req",
+    }
+    res = client.post("/analyze", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["request_id"] == "empty-ctx-req"
+
+
+def test_analyze_with_valid_context(monkeypatch):
+    """Valid preceding exchanges in context are accepted and processed."""
+    monkeypatch.setenv("MOCK_ANALYSIS", "true")
+    payload = {
+        "prompt": "Can you rewrite it using recursion instead?",
+        "response": "Here is the recursive version: def fact(n): return 1 if n <= 1 else n * fact(n-1)",
+        "context": [
+            {
+                "prompt": "Write a Python function to compute factorial.",
+                "response": "Here is an iterative version: def fact(n): ...",
+            }
+        ],
+        "request_id": "valid-ctx-req",
+    }
+    res = client.post("/analyze", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["request_id"] == "valid-ctx-req"
+    assert "analysis" in data
+
+
+@pytest.mark.parametrize("available_count,window_limit,expected_included", [
+    (0, 5, 0),    # 5 selected, 0 available -> 0 included
+    (1, 5, 1),    # 5 selected, 1 available -> 1 included
+    (2, 5, 2),    # 5 selected, 2 available -> 2 included
+    (5, 5, 5),    # 5 selected, 5 available -> 5 included
+    (12, 5, 5),   # 5 selected, 12 available -> 5 most recent included
+    (8, 0, 0),    # 0 selected, 8 available -> 0 included
+])
+def test_context_window_limit_is_a_maximum(monkeypatch, available_count, window_limit, expected_included):
+    """MANDATORY: Context limit is a maximum, not a minimum requirement.
+    Fewer available exchanges never prevent analysis or cause errors."""
+    from app.api.analyze import analyzer
+    monkeypatch.setenv("MOCK_ANALYSIS", "false")
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy-key")
+
+    captured_prompt = None
+
+    async def mock_call(prompt, response, response_style=None, custom_instructions=None, analysis_depth=None, context=None):
+        nonlocal captured_prompt
+        captured_prompt = build_analysis_user_prompt(prompt, response, context=context)
+        return json.dumps({
+            "title": f"Context Test {window_limit}",
+            "blocks": [{"type": "paragraph", "content": "Analysis diagnosis."}]
+        })
+
+    monkeypatch.setattr(analyzer, "_call_gemini_once", mock_call)
+
+    # Generate available preceding exchanges
+    all_history = [
+        {"prompt": f"History prompt {i}", "response": f"History response {i}"}
+        for i in range(1, available_count + 1)
+    ]
+
+    # Frontend/client selects window_limit most recent
+    selected_context = all_history[-window_limit:] if window_limit > 0 else []
+
+    res = client.post(
+        "/analyze",
+        json={
+            "prompt": "Current prompt",
+            "response": "Current response",
+            "context": selected_context,
+            "request_id": f"max-test-{available_count}-{window_limit}"
+        }
+    )
+    assert res.status_code == 200
+    assert len(selected_context) == expected_included
+
+    if expected_included > 0:
+        assert "<CONVERSATION_HISTORY>" in captured_prompt
+        # Chronological order preserved: oldest of the included slice appears first
+        first_included_idx = available_count - expected_included + 1
+        assert f"History prompt {first_included_idx}" in captured_prompt
+        assert f"History prompt {available_count}" in captured_prompt
+    else:
+        assert "<CONVERSATION_HISTORY>" not in captured_prompt
+
+    # Current exchange is always present exactly once
+    assert "<CURRENT_INTERACTION>" in captured_prompt
+    assert "Current prompt" in captured_prompt
+    assert "Current response" in captured_prompt
+
+
+def test_context_exceeds_max_exchanges_returns_413():
+    """Context with more than MAX_CONTEXT_EXCHANGES is rejected with 413 PAYLOAD_TOO_LARGE."""
+    oversized_context = [
+        {"prompt": f"P{i}", "response": f"R{i}"}
+        for i in range(MAX_CONTEXT_EXCHANGES + 1)
+    ]
+    res = client.post(
+        "/analyze",
+        json={
+            "prompt": "Valid prompt",
+            "response": "Valid response",
+            "context": oversized_context,
+            "request_id": "oversized-count"
+        }
+    )
+    assert res.status_code == 413
+    assert res.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
+
+
+def test_context_exceeds_total_chars_budget_returns_413():
+    """Context exceeding MAX_CONTEXT_TOTAL_CHARS is rejected with 413 PAYLOAD_TOO_LARGE."""
+    # 5 exchanges of 9,000 chars each = 45,000 chars (> 40,000 limit)
+    large_context = [
+        {"prompt": "P" * 4500, "response": "R" * 4500}
+        for _ in range(5)
+    ]
+    res = client.post(
+        "/analyze",
+        json={
+            "prompt": "Valid prompt",
+            "response": "Valid response",
+            "context": large_context,
+            "request_id": "oversized-chars"
+        }
+    )
+    assert res.status_code == 413
+    assert res.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
+
+
+def test_context_validation_error_empty_prompt_422():
+    """Empty string prompt in a context exchange is rejected with 422 INVALID_REQUEST."""
+    res = client.post(
+        "/analyze",
+        json={
+            "prompt": "Valid prompt",
+            "response": "Valid response",
+            "context": [{"prompt": "   ", "response": "Valid earlier response"}],
+            "request_id": "empty-ctx-prompt"
+        }
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_context_validation_error_empty_response_422():
+    """Empty string response in a context exchange is rejected with 422 INVALID_REQUEST."""
+    res = client.post(
+        "/analyze",
+        json={
+            "prompt": "Valid prompt",
+            "response": "Valid response",
+            "context": [{"prompt": "Valid earlier prompt", "response": ""}],
+            "request_id": "empty-ctx-resp"
+        }
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_context_validation_error_invalid_type_422():
+    """Non-list context field is rejected with 422 INVALID_REQUEST."""
+    res = client.post(
+        "/analyze",
+        json={
+            "prompt": "Valid prompt",
+            "response": "Valid response",
+            "context": "not-a-list",
+            "request_id": "invalid-ctx-type"
+        }
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_build_analysis_user_prompt_formatting():
+    """Verify build_analysis_user_prompt produces clean structure with history and current interaction."""
+    context = [
+        ContextExchange(prompt="First user turn", response="First assistant turn"),
+        ContextExchange(prompt="Second user turn", response="Second assistant turn"),
+    ]
+    rendered = build_analysis_user_prompt("Current prompt", "Current response", context=context)
+    assert "<CONVERSATION_HISTORY>" in rendered
+    assert "[Exchange 1]" in rendered
+    assert "User: First user turn" in rendered
+    assert "Assistant: First assistant turn" in rendered
+    assert "[Exchange 2]" in rendered
+    assert "User: Second user turn" in rendered
+    assert "Assistant: Second assistant turn" in rendered
+    assert "<CURRENT_INTERACTION>" in rendered
+    assert "<USER_PROMPT>" in rendered
+    assert "Current prompt" in rendered
+    assert "</USER_PROMPT>" in rendered
+    assert "<AI_RESPONSE>" in rendered
+    assert "Current response" in rendered
+    assert "</AI_RESPONSE>" in rendered
+    assert "Diagnose the CURRENT_INTERACTION using the CONVERSATION_HISTORY as context" in rendered
+    assert "Do NOT summarize the conversation history or narrate the response" in rendered

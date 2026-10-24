@@ -13,7 +13,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 
@@ -34,6 +34,7 @@ from app.models.analysis import (
     AnalysisResult,
     CalloutBlock,
     CodeBlock,
+    ContextExchange,
     DividerBlock,
     HeadingBlock,
     ListBlock,
@@ -62,8 +63,9 @@ def generate_mock_analysis(
     request_id: Optional[str] = None,
     response_style: Optional[str] = None,
     analysis_depth: Optional[str] = None,
+    context: Optional[List[ContextExchange]] = None,
 ) -> AnalysisResult:
-    """Generate realistic diagnostic mock analysis conforming strictly to V0.6 quality standards."""
+    """Generate realistic diagnostic mock analysis conforming strictly to V0.6/V0.7 quality standards."""
     clean_p = prompt.strip()
     lower_p = clean_p.lower()
     first_line = clean_p.split("\n")[0][:80] if clean_p else "Interaction"
@@ -81,7 +83,16 @@ def generate_mock_analysis(
                 "No significant omissions or corrective actions are required."
             )
         ]
-        if analysis_depth != "Brief":
+        if context:
+            blocks.append(
+                CalloutBlock(
+                    variant="info",
+                    title="Context Observed",
+                    content=f"Evaluated alongside {len(context)} preceding exchange(s) from the conversation. "
+                    "The current factual answer remains self-contained and consistent with prior turns.",
+                )
+            )
+        elif analysis_depth != "Brief":
             blocks.append(
                 CalloutBlock(
                     variant="tip",
@@ -97,13 +108,23 @@ def generate_mock_analysis(
         return AnalysisResult(request_id=request_id, analysis=doc)
 
     # General diagnostic analysis: identify missing constraints and supply a concrete next prompt
-    blocks = [
-        ParagraphBlock(
-            content=f"The AI appears to have adopted a broad, generalized interpretation because the prompt lacks specific constraints "
-            f"(such as deployment environment, performance requirements, or prior background). "
-            "While the answer covers standard industry conventions, it omits key trade-offs and edge cases relevant to targeted use."
+    blocks = []
+    if context:
+        blocks.append(
+            ParagraphBlock(
+                content=f"Evaluated the latest exchange alongside {len(context)} preceding exchange(s) from the conversation. "
+                "While the earlier dialogue establishes foundational context, the latest AI response appears to adopt a broad, "
+                "generalized interpretation that overlooks key constraints previously discussed."
+            )
         )
-    ]
+    else:
+        blocks.append(
+            ParagraphBlock(
+                content=f"The AI appears to have adopted a broad, generalized interpretation because the prompt lacks specific constraints "
+                f"(such as deployment environment, performance requirements, or prior background). "
+                "While the answer covers standard industry conventions, it omits key trade-offs and edge cases relevant to targeted use."
+            )
+        )
 
     if analysis_depth != "Brief":
         blocks.extend([
@@ -191,6 +212,7 @@ class Analyzer:
         response_style: Optional[str] = None,
         custom_instructions: Optional[str] = None,
         analysis_depth: Optional[str] = None,
+        context: Optional[List[ContextExchange]] = None,
     ) -> str:
         """Execute one Gemini API call with 15s timeout and automatic model fallback."""
         client = self._get_client()
@@ -199,7 +221,7 @@ class Analyzer:
             custom_instructions=custom_instructions,
             analysis_depth=analysis_depth,
         )
-        user_prompt = build_analysis_user_prompt(prompt, response)
+        user_prompt = build_analysis_user_prompt(prompt, response, context=context)
 
         # Candidates to try: configured model, then high-availability fallbacks
         candidates = [self.model_name]
@@ -257,6 +279,7 @@ class Analyzer:
         response_style: Optional[str] = None,
         custom_instructions: Optional[str] = None,
         analysis_depth: Optional[str] = None,
+        context: Optional[List[ContextExchange]] = None,
     ) -> AnalysisResult:
         """Run analysis on the prompt and response interaction."""
         if self.is_mock:
@@ -266,6 +289,7 @@ class Analyzer:
                 request_id=request_id,
                 response_style=response_style,
                 analysis_depth=analysis_depth,
+                context=context,
             )
 
         # Retry once per agreement if output cannot be parsed or validated
@@ -278,6 +302,7 @@ class Analyzer:
                     response_style=response_style,
                     custom_instructions=custom_instructions,
                     analysis_depth=analysis_depth,
+                    context=context,
                 )
                 cleaned = _clean_json_text(raw_text)
                 data = json.loads(cleaned)

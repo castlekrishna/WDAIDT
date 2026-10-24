@@ -2,7 +2,7 @@
 
 Browser extension for ChatGPT that explains *what appears to have shaped* an AI response. Sidebar-first, manual or automatic.
 
-> Scope note: **V0.1** through **V0.5** are complete ✅. **V0.6** lands the **Adaptive Analysis Architecture & Dynamic Document Renderer**, replacing rigid fixed fields with flexible LLM-generated documents, 8 extensible content block types, persistent Response Style presets, and Analysis Depth controls.
+> Scope note: **V0.1** through **V0.6** are complete ✅. **V0.7** introduces **Multi-Context Analysis**, allowing Gemini to analyze the latest AI response alongside relevant preceding conversation exchanges from the same ChatGPT thread with configurable context windows and deterministic size budgets.
 
 ---
 
@@ -71,6 +71,18 @@ Browser extension for ChatGPT that explains *what appears to have shaped* an AI 
 - [x] **Accessibility & Keyboard Navigation**: Full keyboard toggling (`Enter` / `Space`), `aria-expanded`, `aria-controls`, `role="button"`, and high-contrast `:focus-visible` styling.
 - [x] **Comprehensive Test Verification**: 36 backend tests (`pytest tests/backend/`) and 68 extension tests (`node --test tests/extension/*.test.js`) passing cleanly (104 tests total).
 - [x] **Milestone Documentation**: Comprehensive reference in `docs/V0.6.md`.
+### V0.7 — Multi-Context Analysis ✅
+- [x] **Configurable Context Window**: Side panel settings control for maximum preceding exchanges (0, 3, 5, 10 previous exchanges; default: 5) persisted in `chrome.storage.local`.
+- [x] **Maximum Context Limit (Never a Minimum)**: Analysis executes seamlessly regardless of whether 0, 1, 2, 5, or 12 prior turns exist. Never blocks, errors, or invents synthetic placeholder messages when history is smaller than the configured window.
+- [x] **Separation of Concerns**: Current prompt and response are always captured, validated, and evaluated separately from historical context; never duplicated in history.
+- [x] **Chronological Pairing & Regeneration Support**: Historical turns are ordered oldest-to-newest. Multi-draft regenerated assistant turns reliably pair the latest response with its prompt.
+- [x] **Deterministic Context Budgeting**: Enforces strict payload limits (30,000 char extension budget / 40,000 char backend acceptance; 20 max context exchanges). Prioritizes most recent complete turns and drops older turns whole; never truncates current interaction.
+- [x] **API Contract Extension**: `POST /analyze` supports optional `context: List[ContextExchange]` with 100% backward compatibility for single-exchange callers.
+- [x] **Master Prompt Context Guidance**: Instructs Gemini to use history as evidence for missed constraints or contradictions while strictly prohibiting conversation summaries and response narration.
+- [x] **UI Transparency Badge**: Captured Interaction card displays exact included exchange count (`"Current exchange only"`, `"Context: 1 previous exchange"`, `"Context: N previous exchanges"`).
+- [x] **Full Regression & Safety**: 51 backend tests (`pytest tests/backend/`) and 91 extension tests (`node --test tests/extension/*.test.js`) passing cleanly (142 tests total).
+- [x] **Milestone Documentation**: Comprehensive reference in `docs/V0.7.md`.
+
 
 ---
 
@@ -99,8 +111,8 @@ backend/
   requirements.txt
   .env.example
 tests/
-  extension/                      # 68 tests (smoke, capture, auto, pipeline, dynamic renderer, capture audit)
-  backend/                        # 36 unit tests (schema, block types, quality evaluation, limits, errors, retries)
+  extension/                      # 91 tests (smoke, capture, auto, pipeline, dynamic renderer, capture audit, context window)
+  backend/                        # 51 unit tests (schema, block types, quality evaluation, limits, errors, retries, multi-context)
 docs/
   V0.1.md                         # V0.1 extension handoff notes
   V0.2.md                         # V0.2 backend handoff notes
@@ -108,6 +120,7 @@ docs/
   V0.4.md                         # V0.4 multi-turn SPA capture hardening notes
   V0.5.md                         # V0.5 UI modernization & dual-theme notes
   V0.6.md                         # V0.6 Adaptive analysis architecture & quality overhaul notes
+  V0.7.md                         # V0.7 Multi-context analysis & configurable window notes
 ```
 
 ---

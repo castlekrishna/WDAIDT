@@ -11,6 +11,22 @@ MAX_PROMPT_CHARS = 8000
 MAX_RESPONSE_CHARS = 20000
 MAX_TITLE_CHARS = 200
 MAX_BLOCKS = 50
+MAX_CONTEXT_EXCHANGES = 20
+MAX_CONTEXT_TOTAL_CHARS = 40000
+
+
+class ContextExchange(BaseModel):
+    """An earlier user-assistant exchange from the same ChatGPT conversation."""
+    model_config = ConfigDict(extra="ignore")
+
+    prompt: str = Field(..., min_length=1, max_length=MAX_PROMPT_CHARS, description="An earlier user prompt.")
+    response: str = Field(..., min_length=1, max_length=MAX_RESPONSE_CHARS, description="The corresponding earlier assistant response.")
+
+    @model_validator(mode="after")
+    def validate_non_empty(self):
+        if not self.prompt.strip() or not self.response.strip():
+            raise ValueError("Context exchange prompt and response must both be non-empty strings.")
+        return self
 
 
 class BaseBlock(BaseModel):
@@ -175,6 +191,10 @@ class AnalysisRequest(BaseModel):
     response: str = Field(
         ...,
         description="The latest ChatGPT assistant reply.",
+    )
+    context: Optional[List[ContextExchange]] = Field(
+        default_factory=list,
+        description="Optional preceding conversation exchanges from the same ChatGPT conversation in chronological order.",
     )
     request_id: Optional[str] = Field(
         default=None,

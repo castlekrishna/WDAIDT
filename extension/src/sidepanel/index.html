@@ -70,6 +70,17 @@
           <option value="Detailed">Detailed</option>
         </select>
       </div>
+
+      <div class="setting-group">
+        <label for="contextWindowSelect" class="setting-label">Context Window</label>
+        <span class="setting-desc">Maximum previous exchanges included. The current exchange is always analyzed separately.</span>
+        <select id="contextWindowSelect" class="select-control">
+          <option value="0">0 previous exchanges</option>
+          <option value="3">3 previous exchanges</option>
+          <option value="5" selected>5 previous exchanges</option>
+          <option value="10">10 previous exchanges</option>
+        </select>
+      </div>
     </section>
 
     <!-- Main Controls Card -->
@@ -102,6 +113,7 @@
       <div class="accordion-header" id="captureAccordionToggle" role="button" tabindex="0" title="Click to collapse/expand" aria-expanded="false" aria-controls="captureAccordionContent">
         <div class="accordion-title">
           <span>Captured Interaction</span>
+          <span id="captureContextBadge" class="badge badge-context">Current exchange only</span>
           <span id="captureStatusBadge" class="badge" hidden>Captured</span>
         </div>
         <span class="accordion-chevron" id="captureChevron">&#x25BC;</span>

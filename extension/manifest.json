@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "0.6.0",
-  "description": "V0.6: Adaptive analysis architecture and dynamic document renderer explaining what shaped ChatGPT responses.",
+  "version": "0.7.0",
+  "description": "V0.7: Multi-context analysis and adaptive architecture and dynamic document renderer explaining what shaped ChatGPT responses.",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "assets/icon16.png",

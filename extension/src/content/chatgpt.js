@@ -21,7 +21,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.7.0';
   const TYPE_GET_LATEST = 'WDAIDT_GET_LATEST';
   const TYPE_PING = 'WDAIDT_PING';
 
@@ -658,10 +658,10 @@
     return out;
   }
 
-  function pairLatest(nodes) {
+  function pairExchanges(nodes) {
     const users = nodes.filter((n) => n.role === 'user');
     const assistants = nodes.filter((n) => n.role === 'assistant');
-    const base = { userCount: users.length, assistantCount: assistants.length };
+    const base = { userCount: users.length, assistantCount: assistants.length, history: [] };
     if (!users.length && !assistants.length) {
       return { prompt: '', response: '', paired: false, ...base };
     }
@@ -673,19 +673,69 @@
     if (!lastUser && lastAsst) {
       return { prompt: '', response: lastAsst.text, paired: false, ...base };
     }
+
+    // Identify user turn indices in DOM order
+    const userIndices = [];
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].role === 'user') {
+        userIndices.push(i);
+      }
+    }
+
+    // Partition nodes into complete user-assistant exchanges
+    const completedExchanges = [];
+    for (let k = 0; k < userIndices.length; k++) {
+      const uIdx = userIndices[k];
+      const nextUIdx = (k + 1 < userIndices.length) ? userIndices[k + 1] : nodes.length;
+      const turnAssts = [];
+      for (let j = uIdx + 1; j < nextUIdx; j++) {
+        if (nodes[j].role === 'assistant') {
+          turnAssts.push(nodes[j]);
+        }
+      }
+      if (turnAssts.length > 0) {
+        // Last assistant turn handles regenerated responses where multiple drafts exist
+        const asstTurn = turnAssts[turnAssts.length - 1];
+        completedExchanges.push({
+          prompt: nodes[uIdx].text,
+          response: asstTurn.text
+        });
+      }
+    }
+
     const li = nodes.lastIndexOf(lastUser);
     const lj = nodes.lastIndexOf(lastAsst);
+
     if (lj > li) {
+      // The newest user message has a reply after it -> completed current exchange
+      // Preceding history is all completed exchanges prior to the latest exchange
+      const history = completedExchanges.length > 1
+        ? completedExchanges.slice(0, -1)
+        : [];
       return {
         prompt: lastUser.text,
         response: lastAsst.text,
         paired: true,
-        ...base,
+        userCount: users.length,
+        assistantCount: assistants.length,
+        history,
       };
     }
-    // The newest user message has no reply after it yet (just sent or the
-    // reply is still streaming). Report honestly instead of a stale pair.
-    return { prompt: lastUser.text, response: '', paired: false, ...base };
+
+    // The newest user message has no reply after it yet (pending / streaming)
+    // History contains all completed exchanges prior to this user message
+    return {
+      prompt: lastUser.text,
+      response: '',
+      paired: false,
+      userCount: users.length,
+      assistantCount: assistants.length,
+      history: completedExchanges,
+    };
+  }
+
+  function pairLatest(nodes) {
+    return pairExchanges(nodes);
   }
 
   // Small structural summary so failures are diagnosable from the sidebar.
@@ -772,7 +822,7 @@
     }
   }
 
-  const EMPTY = { prompt: '', response: '', paired: false, userCount: 0, assistantCount: 0 };
+  const EMPTY = { prompt: '', response: '', paired: false, userCount: 0, assistantCount: 0, history: [] };
 
   function getLatestInteraction() {
     const url = currentUrl();
@@ -869,6 +919,7 @@
       assistantCount: r.assistantCount,
       paired: r.paired,
       fingerprint: fingerprint(),
+      history: r.history || [],
     };
   }
 
@@ -978,6 +1029,7 @@
         prompt: r.prompt,
         response: r.response,
         url: r.url,
+        history: r.history || [],
       });
       if (p && p.catch) p.catch(() => {});
     } catch {
@@ -1096,6 +1148,7 @@
       version: VERSION,
       isChatGPTPage,
       getLatest: getLatestInteraction,
+      pairExchanges,
     });
   } catch {
     // non-fatal

@@ -33,7 +33,18 @@ const WDAIDT_CONFIG = Object.freeze({
     'Balanced',
     'Detailed'
   ],
-  DEFAULT_ANALYSIS_DEPTH: 'Balanced'
+  DEFAULT_ANALYSIS_DEPTH: 'Balanced',
+
+  // V0.7 Multi-Context Window presets (maximum preceding exchanges)
+  CONTEXT_WINDOWS: [
+    0,
+    3,
+    5,
+    10
+  ],
+  DEFAULT_CONTEXT_WINDOW: 5,
+  MAX_CONTEXT_EXCHANGES: 10,
+  MAX_CONTEXT_TOTAL_CHARS: 30000
 });
 
 function wdaidtAnalyzeUrl(baseUrl) {

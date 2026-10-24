@@ -15,7 +15,7 @@
     'captureAccordionToggle', 'captureAccordionContent', 'captureChevron', 'captureStatusBadge',
     'settingsToggleBtn', 'settingsCloseBtn', 'settingsCard',
     'responseStyleSelect', 'customInstructionsGroup', 'customInstructionsInput',
-    'analysisDepthSelect', 'documentTitle', 'documentContainer'
+    'analysisDepthSelect', 'contextWindowSelect', 'captureContextBadge', 'documentTitle', 'documentContainer'
   ].forEach((id) => { els[id] = $(id); });
 
   const CFG = () => globalThis.WDAIDT_CONFIG || {};
@@ -29,7 +29,8 @@
   const settingsState = {
     responseStyle: 'Professional and direct',
     customInstructions: '',
-    analysisDepth: 'Balanced'
+    analysisDepth: 'Balanced',
+    contextWindow: 5
   };
 
   function fpSummary(fp) {
@@ -47,6 +48,67 @@
   function formatCapturedForDisplay(text, maxChars) {
     const s = trimForBackend(text, maxChars);
     return s || '(empty)';
+  }
+
+  function parseValidContextWindow(val, supported, defaultVal) {
+    const list = supported || (CFG().CONTEXT_WINDOWS || [0, 3, 5, 10]);
+    const def = defaultVal != null ? defaultVal : (CFG().DEFAULT_CONTEXT_WINDOW != null ? CFG().DEFAULT_CONTEXT_WINDOW : 5);
+    const parsed = parseInt(val, 10);
+    if (Number.isInteger(parsed) && list.includes(parsed)) {
+      return parsed;
+    }
+    return def;
+  }
+
+  function filterContextExchanges(history, maxExchanges, maxTotalChars) {
+    if (!history || !Array.isArray(history) || maxExchanges <= 0) {
+      return [];
+    }
+    const valid = [];
+    for (const ex of history) {
+      if (ex && typeof ex === 'object') {
+        const p = typeof ex.prompt === 'string' ? ex.prompt.trim() : '';
+        const r = typeof ex.response === 'string' ? ex.response.trim() : '';
+        if (p && r) {
+          valid.push({ prompt: p, response: r });
+        }
+      }
+    }
+    if (!valid.length) return [];
+
+    // Select at most maxExchanges most recent eligible exchanges
+    const candidates = valid.slice(-maxExchanges);
+
+    // Enforce total context character size budget
+    // Priority: retain complete most recent exchanges, drop older complete exchanges first
+    if (typeof maxTotalChars === 'number' && maxTotalChars > 0) {
+      const kept = [];
+      let currentTotal = 0;
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const ex = candidates[i];
+        const exLen = ex.prompt.length + ex.response.length;
+        if (currentTotal + exLen <= maxTotalChars) {
+          kept.unshift(ex);
+          currentTotal += exLen;
+        } else {
+          // Budget reached; drop this older exchange and any preceding ones
+          break;
+        }
+      }
+      return kept;
+    }
+
+    return candidates;
+  }
+
+  function formatContextBadgeText(count) {
+    if (!count || count <= 0) {
+      return 'Current exchange only';
+    }
+    if (count === 1) {
+      return 'Context: 1 previous exchange';
+    }
+    return `Context: ${count} previous exchanges`;
   }
 
   function setStatus(msg) {
@@ -281,10 +343,11 @@
       promptLen: prompt.length,
       responseLen: response.length
     });
-    return { prompt, response, meta };
+    const history = Array.isArray(res.history) ? res.history : [];
+    return { prompt, response, meta, history };
   }
 
-  async function postAnalyze(prompt, response, requestId) {
+  async function postAnalyze(prompt, response, requestId, context = []) {
     const cfg = CFG();
     const base = cfg.BACKEND_BASE_URL || 'http://localhost:8000';
     const url = (globalThis.wdaidtAnalyzeUrl
@@ -295,6 +358,7 @@
     const body = {
       prompt: trimForBackend(prompt, maxP),
       response: trimForBackend(response, maxR),
+      context: Array.isArray(context) ? context : [],
       request_id: requestId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
       response_style: settingsState.responseStyle,
       custom_instructions: settingsState.responseStyle === 'Custom instructions'
@@ -636,18 +700,19 @@
     return String(Date.now());
   }
 
-  async function analyzeCapture(cap, requestId) {
+  async function analyzeCapture(cap, requestId, context = []) {
     setStatus('Analyzing…');
     if (els.statusDot) els.statusDot.className = 'status-dot analyzing';
     if (els.skeletonCard) els.skeletonCard.hidden = true;
     logEvent('analyze_start', {
       requestId,
       promptLen: (cap.prompt || '').length,
-      responseLen: (cap.response || '').length
+      responseLen: (cap.response || '').length,
+      contextCount: (context || []).length
     });
     let data;
     try {
-      data = await postAnalyze(cap.prompt, cap.response, requestId);
+      data = await postAnalyze(cap.prompt, cap.response, requestId, context);
     } catch (backendErr) {
       if (backendErr) backendErr.stage = backendErr.stage || 'analysis';
       logEvent('analyze_error', { code: (backendErr && backendErr.code) || 'UNKNOWN' });
@@ -687,17 +752,28 @@
       const maxR = cfg.MAX_RESPONSE_CHARS || 20000;
       const normPrompt = trimForBackend(cap.prompt, maxP);
       const normResponse = trimForBackend(cap.response, maxR);
-      const normalizedCap = { prompt: normPrompt, response: normResponse, meta: cap.meta };
+      const maxEx = parseValidContextWindow(settingsState.contextWindow);
+      const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
+      const filteredContext = filterContextExchanges(cap.history, maxEx, maxContextChars);
+      const normalizedCap = {
+        prompt: normPrompt,
+        response: normResponse,
+        meta: cap.meta,
+        context: filteredContext
+      };
       lastCapture = normalizedCap;
 
       if (els.captureCard) els.captureCard.hidden = false;
       if (els.captureStatusBadge) els.captureStatusBadge.hidden = false;
+      if (els.captureContextBadge) {
+        els.captureContextBadge.textContent = formatContextBadgeText(filteredContext.length);
+      }
       if (els.promptPreview) els.promptPreview.textContent = normPrompt || '(empty)';
       if (els.responsePreview) els.responsePreview.textContent = normResponse || '(empty)';
 
       const requestId = newRequestId();
       latestRequestId = requestId;
-      await analyzeCapture(normalizedCap, requestId);
+      await analyzeCapture(normalizedCap, requestId, filteredContext);
     } catch (e) {
       if (e && e.stage === 'capture') {
         logEvent('capture_error', { code: (e && e.code) || 'UNKNOWN' });
@@ -731,7 +807,7 @@
       `${(prompt || '').slice(-120)}|${(response || '').slice(-120)}`;
   }
 
-  async function runAuto(prompt, response) {
+  async function runAuto(prompt, response, history = []) {
     if (!els.autoToggle || !els.autoToggle.checked) return;
     const h = autoHash(prompt, response);
     if (h === lastAutoHash) return;
@@ -745,17 +821,24 @@
       const normPrompt = trimForBackend(prompt, maxP);
       const normResponse = trimForBackend(response, maxR);
       if (!normPrompt || !normResponse) return;
-      const cap = { prompt: normPrompt, response: normResponse };
+
+      const maxEx = parseValidContextWindow(settingsState.contextWindow);
+      const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
+      const filteredContext = filterContextExchanges(history, maxEx, maxContextChars);
+      const cap = { prompt: normPrompt, response: normResponse, context: filteredContext };
       lastCapture = cap;
 
       if (els.captureCard) els.captureCard.hidden = false;
       if (els.captureStatusBadge) els.captureStatusBadge.hidden = false;
+      if (els.captureContextBadge) {
+        els.captureContextBadge.textContent = formatContextBadgeText(filteredContext.length);
+      }
       if (els.promptPreview) els.promptPreview.textContent = normPrompt;
       if (els.responsePreview) els.responsePreview.textContent = normResponse;
 
       const requestId = newRequestId();
       latestRequestId = requestId;
-      await analyzeCapture(cap, requestId);
+      await analyzeCapture(cap, requestId, filteredContext);
     } catch (e) {
       showError((e && e.message) || 'Analysis failed. Please try again.');
       setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
@@ -775,7 +858,7 @@
     try {
       autoTimer = setTimeout(() => {
         autoTimer = null;
-        runAuto(message.prompt, message.response);
+        runAuto(message.prompt, message.response, message.history || []);
       }, 500);
     } catch {
       /* timers unavailable */
@@ -993,7 +1076,8 @@
       const stored = await chrome.storage.local.get([
         'wdaidt_response_style',
         'wdaidt_custom_instructions',
-        'wdaidt_analysis_depth'
+        'wdaidt_analysis_depth',
+        'wdaidt_context_window'
       ]);
       if (stored.wdaidt_response_style) {
         settingsState.responseStyle = stored.wdaidt_response_style;
@@ -1003,6 +1087,11 @@
       }
       if (stored.wdaidt_analysis_depth) {
         settingsState.analysisDepth = stored.wdaidt_analysis_depth;
+      }
+      if (stored.wdaidt_context_window != null) {
+        settingsState.contextWindow = parseValidContextWindow(stored.wdaidt_context_window);
+      } else {
+        settingsState.contextWindow = 5;
       }
     } catch {
       /* fallback to defaults */
@@ -1020,6 +1109,9 @@
     }
     if (els.analysisDepthSelect) {
       els.analysisDepthSelect.value = settingsState.analysisDepth;
+    }
+    if (els.contextWindowSelect) {
+      els.contextWindowSelect.value = String(settingsState.contextWindow);
     }
 
     // 3. Attach event listeners
@@ -1074,6 +1166,16 @@
         } catch { /* non-fatal */ }
       });
     }
+
+    if (els.contextWindowSelect) {
+      els.contextWindowSelect.addEventListener('change', async () => {
+        const selected = parseValidContextWindow(els.contextWindowSelect.value);
+        settingsState.contextWindow = selected;
+        try {
+          await chrome.storage.local.set({ wdaidt_context_window: selected });
+        } catch { /* non-fatal */ }
+      });
+    }
   }
 
   // Global listeners
@@ -1116,6 +1218,9 @@
       settingsState,
       trimForBackend,
       formatCapturedForDisplay,
+      parseValidContextWindow,
+      filterContextExchanges,
+      formatContextBadgeText,
       setCaptureExpanded,
       getCaptureExpanded: () => isCaptureExpanded,
       initAccordion

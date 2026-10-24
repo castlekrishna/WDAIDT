@@ -580,6 +580,16 @@ button:disabled {
   padding: 1px 6px;
 }
 
+.badge-context {
+  font: 500 10px var(--font-code);
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 1px 6px;
+  letter-spacing: 0.02em;
+}
+
 [hidden] {
   display: none !important;
 }
