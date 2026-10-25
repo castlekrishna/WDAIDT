@@ -2,7 +2,7 @@
 
 Browser extension for ChatGPT that explains *what appears to have shaped* an AI response. Sidebar-first, manual or automatic.
 
-> Scope note: **V0.1** through **V0.6** are complete ✅. **V0.7** introduces **Multi-Context Analysis**, allowing Gemini to analyze the latest AI response alongside relevant preceding conversation exchanges from the same ChatGPT thread with configurable context windows and deterministic size budgets.
+> Scope note: **V0.1** through **V0.7** are complete ✅. **V0.8** provides **Stabilization & Reliability**, auditing all core features, expanding regression coverage across integration and quality boundaries, verifying live Gemini API behavior, and achieving a 162-test baseline.
 
 ---
 
@@ -83,6 +83,15 @@ Browser extension for ChatGPT that explains *what appears to have shaped* an AI 
 - [x] **Full Regression & Safety**: 51 backend tests (`pytest tests/backend/`) and 91 extension tests (`node --test tests/extension/*.test.js`) passing cleanly (142 tests total).
 - [x] **Milestone Documentation**: Comprehensive reference in `docs/V0.7.md`.
 
+### V0.8 — Stabilization & Reliability Release ✅
+- [x] **Comprehensive Functional Audit**: Systematic audit across 7 verification areas (ChatGPT capture, multi-context analysis, extension-to-backend integration, backend reliability, analysis quality/safety, Obsidian UI/accessibility, and security/privacy).
+- [x] **Extension Integration Hardening**: Verified payload transmission, custom instruction gating, HTTP error status mappings (413, 422, 429, 502, network failure, timeout), stale result dropping, and Auto Analyze messaging.
+- [x] **Backend Reliability & Error Envelopes**: Verified `GET /health`, standardized 404/405 error envelopes, input validation, and backward compatibility for `context: null` requests.
+- [x] **Multi-Context Quality & Safety Tests**: Validated diagnostic detection of overlooked user constraints, contradicted environment clarifications, ambiguous follow-ups, and isolation of prompt injection payloads as passive data.
+- [x] **Live Gemini API Verification**: Confirmed end-to-end execution of both single-turn and multi-context queries with live Google Gemini API (`gemini-3.5-flash-lite`).
+- [x] **Full Regression Test Coverage**: 102 extension unit tests (`node --test tests/extension/*.test.js`) and 60 backend unit tests (`pytest tests/backend/`) passing cleanly (162 tests total).
+- [x] **Milestone Documentation**: Comprehensive reference in `docs/V0.8.md`.
+
 
 ---
 
@@ -111,8 +120,8 @@ backend/
   requirements.txt
   .env.example
 tests/
-  extension/                      # 91 tests (smoke, capture, auto, pipeline, dynamic renderer, capture audit, context window)
-  backend/                        # 51 unit tests (schema, block types, quality evaluation, limits, errors, retries, multi-context)
+  extension/                      # 102 tests (smoke, capture, auto, pipeline, dynamic renderer, capture audit, context window, integration)
+  backend/                        # 60 unit tests (schema, block types, quality evaluation, limits, errors, retries, multi-context, reliability)
 docs/
   V0.1.md                         # V0.1 extension handoff notes
   V0.2.md                         # V0.2 backend handoff notes
@@ -121,6 +130,7 @@ docs/
   V0.5.md                         # V0.5 UI modernization & dual-theme notes
   V0.6.md                         # V0.6 Adaptive analysis architecture & quality overhaul notes
   V0.7.md                         # V0.7 Multi-context analysis & configurable window notes
+  V0.8.md                         # V0.8 Stabilization & reliability release notes
 ```
 
 ---

@@ -158,8 +158,10 @@ def build_analysis_user_prompt(
     if context:
         history_lines = []
         for idx, ex in enumerate(context, 1):
+            p = getattr(ex, "prompt", None) or (ex.get("prompt") if isinstance(ex, dict) else "")
+            r = getattr(ex, "response", None) or (ex.get("response") if isinstance(ex, dict) else "")
             history_lines.append(
-                f"[Exchange {idx}]\nUser: {ex.prompt}\nAssistant: {ex.response}"
+                f"[Exchange {idx}]\nUser: {p}\nAssistant: {r}"
             )
         history_block = "\n\n".join(history_lines)
         sections.append(

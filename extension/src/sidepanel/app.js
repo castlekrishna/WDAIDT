@@ -1,4 +1,4 @@
-/* WDAIDT side-panel controller (V0.6 — Adaptive Analysis Architecture).
+/* WDAIDT side-panel controller (V0.8 — Stabilization & Reliability Release).
  * Only this layer talks to the backend. Content script only captures.
  * Renders flexible LLM-generated documents with variable block combinations.
  */
@@ -1223,7 +1223,18 @@
       formatContextBadgeText,
       setCaptureExpanded,
       getCaptureExpanded: () => isCaptureExpanded,
-      initAccordion
+      initAccordion,
+      postAnalyze,
+      analyzeCapture,
+      newRequestId,
+      isStale,
+      getLatestRequestId: () => latestRequestId,
+      setLatestRequestId: (id) => { latestRequestId = id; },
+      showError,
+      clearResult,
+      renderResult,
+      initAutoToggle,
+      notifyTabsAuto
     };
   }
 })();
