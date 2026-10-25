@@ -2,6 +2,19 @@
 
 All notable changes to Why Did AI Do That? are documented here. Versions are listed from newest to oldest.
 
+## V0.9.2 — Submission Readiness & Compliance Audit
+
+WDAIDT V0.9.2 is a dedicated hackathon submission readiness, planning compliance, and repository audit milestone for the Devpost Build With AI: Basics hackathon. This release formalizes planning artifacts, establishes an open-source MIT license, completes a full engineering and privacy audit, and creates comprehensive submission verification reports.
+
+- **Formal Planning Artifacts Created**: Generated canonical planning documents matching the official Devpost Learn curriculum specifications at both the repository root (`scope.md`, `prd.md`, `spec.md`) and in the `devpost/` workspace (`devpost/scope.md`, `devpost/prd.md`, `devpost/spec.md`, `devpost/checklist.md`).
+- **Official Open-Source MIT License**: Formally licensed the project under the MIT License (`LICENSE`) with copyright 2026 Krishna Kumar, Lidiya.
+- **Honest Skill Pack Compliance Evaluation**: Explicitly documented the project's development history—clarifying that early prototype development occurred prior to running the Devpost Learn CLI, and that V0.9.2 completes the canonical planning and alignment audit without fictional historical claims.
+- **Comprehensive Submission Readiness Report**: Authored `docs/SUBMISSION_READINESS.md` detailing the official requirements matrix, eligibility verification (Oct 12 creation vs. Sept 22 hackathon start), security/privacy audit, testing evidence, and an explicit checklist of remaining owner tasks (video recording and Devpost form submission).
+- **Metadata & Version Synchronization**: Synchronized release version `0.9.2` across `extension/manifest.json`, `extension/src/content/chatgpt.js`, `extension/src/sidepanel/app.js`, backend router docstrings, and documentation.
+- **Regression Verification**: Confirmed 100% pass rate across the full automated regression baseline of 163 tests (103 extension unit/integration tests + 60 backend unit tests).
+
+Detailed technical notes, compliance matrices, and audit findings are preserved in [V0.9.2 technical notes](V0.9.2.md).
+
 ## V0.9.1 — Usability Defaults & Documentation Restructure
 
 WDAIDT V0.9.1 introduces streamlined usability defaults and an engaging, user-first documentation structure. This release sets the extension defaults to an approachable, fast diagnostic workflow and provides immediate, zero-friction onboarding for new users.

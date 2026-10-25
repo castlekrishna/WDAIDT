@@ -3,7 +3,7 @@
 > **Ever wonder why ChatGPT answered your prompt the way it did?**  
 > WDAIDT is a browser extension that lives in your Chrome side panel, providing real-time, evidence-based diagnostic explanations and ready-to-use follow-up prompts for your ChatGPT conversations.
 
-[Repository](https://github.com/castlekrishna/WDAIDT) · [Changelog](docs/CHANGELOG.md) · [Latest Milestone Notes](docs/V0.9.md)
+[Repository](https://github.com/castlekrishna/WDAIDT) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Latest Milestone Notes (V0.9.2)](docs/V0.9.2.md)
 
 ---
 
@@ -136,7 +136,7 @@ The backend is built with FastAPI and runs locally on your machine.
 2. Turn ON **Developer mode** (toggle in the upper-right corner).
 3. Click **Load unpacked** (button in the upper-left corner).
 4. Select the `extension/` directory inside your cloned repository.
-5. That's it! **Why Did AI Do That?** is now installed (version 0.9.1).
+5. That's it! **Why Did AI Do That?** is now installed (version 0.9.2).
 
 ---
 
@@ -227,9 +227,19 @@ flowchart TD
 ```text
 WDAIDT/
 ├── .gitignore                      # Git exclusion rules (secrets, venvs, caches)
+├── LICENSE                         # Open-source MIT license
 ├── README.md                       # Permanent project documentation & overview
+├── scope.md                        # Hackathon project scope & boundaries
+├── prd.md                          # Product requirements document
+├── spec.md                         # Technical specification & architecture contract
+├── devpost/                        # Devpost Learn AI Basics workspace artifacts
+│   ├── checklist.md                # 11-slice milestone verification checklist
+│   ├── prd.md                      # Product requirements artifact
+│   ├── scope.md                    # Project scope artifact
+│   └── spec.md                     # Technical specification artifact
 ├── docs/
-│   ├── CHANGELOG.md                # Centralized historical changelog (V0.1–V0.9.1)
+│   ├── CHANGELOG.md                # Centralized historical changelog (V0.1–V0.9.2)
+│   ├── SUBMISSION_READINESS.md     # Hackathon audit & compliance matrix
 │   ├── V0.1.md                     # V0.1 extension foundation technical notes
 │   ├── V0.2.md                     # V0.2 backend foundation technical notes
 │   ├── V0.3.md                     # V0.3 capture reliability technical notes
@@ -238,9 +248,10 @@ WDAIDT/
 │   ├── V0.6.md                     # V0.6 adaptive architecture technical notes
 │   ├── V0.7.md                     # V0.7 multi-context analysis technical notes
 │   ├── V0.8.md                     # V0.8 stabilization release technical notes
-│   └── V0.9.md                     # V0.9 submission readiness & audit notes
+│   ├── V0.9.md                     # V0.9 submission polish technical notes
+│   └── V0.9.2.md                   # V0.9.2 submission readiness & compliance audit
 ├── extension/
-│   ├── manifest.json               # Manifest V3 configuration (v0.9.1)
+│   ├── manifest.json               # Manifest V3 configuration (v0.9.2)
 │   ├── assets/                     # Extension icons (16px, 48px, 128px)
 │   └── src/
 │       ├── background/
@@ -434,8 +445,7 @@ Future capabilities planned for subsequent releases:
 ## License and Acknowledgments
 
 ### License
-> [!NOTE]
-> A formal open-source license file is not currently included in the repository. Please consult the repository owners for licensing terms before commercial use or distribution.
+Distributed under the [MIT License](LICENSE). Copyright (c) 2026 Krishna Kumar, Lidiya.
 
 ### Acknowledgments
 - Built with [Google Gemini](https://ai.google.dev/) and the Google GenAI SDK.
@@ -446,9 +456,12 @@ Future capabilities planned for subsequent releases:
 
 ## Documentation
 
-- [Changelog (V0.1 – V0.9.1)](docs/CHANGELOG.md): Complete release history from the initial foundation to submission readiness.
+- [Submission Audit & Readiness Report](docs/SUBMISSION_READINESS.md): Hackathon compliance matrix, official rule verification, and release evaluation.
+- [Changelog (V0.1 – V0.9.2)](docs/CHANGELOG.md): Complete release history from the initial foundation through submission readiness.
+- [V0.9.2 Technical Notes](docs/V0.9.2.md): Submission readiness, hackathon compliance audit, and planning artifact synchronization.
 - [V0.9 Technical Notes](docs/V0.9.md): Release readiness, usability audit, and verification report.
 - [V0.8 Technical Notes](docs/V0.8.md): Stabilization, integration hardening, and reliability audit.
 - [V0.7 Technical Notes](docs/V0.7.md): Multi-context analysis architecture and size budgeting.
 - [V0.6 Technical Notes](docs/V0.6.md): Dynamic document schema and quality overhaul.
 - [Historical Version Notes](docs/): Technical records for [V0.5](docs/V0.5.md), [V0.4](docs/V0.4.md), [V0.3](docs/V0.3.md), [V0.2](docs/V0.2.md), and [V0.1](docs/V0.1.md).
+- **Planning Artifacts (Devpost Learn AI Basics)**: [Scope](scope.md) · [PRD](prd.md) · [Spec](spec.md) · [Milestone Checklist](devpost/checklist.md)
