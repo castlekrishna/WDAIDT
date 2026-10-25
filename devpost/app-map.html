@@ -189,7 +189,7 @@
   <header>
     <h1>Why Did AI Do That? — Architecture Map & Code Tour</h1>
     <p class="subtitle">A visual guide to WDAIDT's data flow, core code stops, and reusable practices.</p>
-    <div class="badge">Snapshot: V0.9.3 | Commit e7b2115 | Standalone Offline Reference</div>
+    <div class="badge">Snapshot: V0.9.3 | Standalone Offline Reference</div>
   </header>
 
   <!-- 1. Plain-Language Overview -->
@@ -203,7 +203,7 @@
       <li><strong>Content Script (<code>extension/src/content/chatgpt.js</code>)</strong>: Lives in the ChatGPT tab, observing stream completion and extracting the prompt/response pairs without making network calls.</li>
       <li><strong>Side Panel UI (<code>extension/src/sidepanel/app.js</code>)</strong>: Manages user preferences (tone, depth, context window), coordinates backend communication, and safely renders the 9 dynamic document blocks.</li>
       <li><strong>FastAPI Backend (<code>backend/app/main.py</code> & <code>api/analyze.py</code>)</strong>: Validates payloads via Pydantic schemas, enforces character budgets, and handles standardized error envelopes.</li>
-      <li><strong>Gemini Analysis Engine (<code>backend/app/analysis/</code>)</strong>: Composes master system prompts, incorporates epistemic boundaries, calls Gemini 2.5 Flash Lite with automatic retry, and validates structured output.</li>
+      <li><strong>Gemini Analysis Engine (<code>backend/app/analysis/</code>)</strong>: Composes master system prompts, incorporates epistemic boundaries, calls Google Gemini (default <code>gemini-3.5-flash-lite</code>) with automatic retry, and validates structured output.</li>
     </ul>
   </section>
 
@@ -321,9 +321,13 @@ export const DEFAULT_ANALYSIS_DEPTH = 'Brief';</pre>
 
     <details>
       <summary>Switch Google Gemini model or API configuration</summary>
-      <p>Open <code>backend/app/analysis/analyzer.py</code>:</p>
-      <pre>DEFAULT_MODEL = "gemini-2.5-flash-lite"</pre>
-      <p>Adjust the model name or change timeout and retry parameters in <code>generate_analysis_with_retry()</code>.</p>
+      <p>Set <code>GEMINI_MODEL</code> in <code>backend/.env</code> or modify the default in <code>backend/app/analysis/analyzer.py</code>:</p>
+      <pre># In backend/.env:
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+# Fallback default in backend/app/analysis/analyzer.py:
+os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")</pre>
+      <p>Candidate fallback models can also be adjusted in <code>_call_gemini_once()</code>.</p>
     </details>
   </section>
 

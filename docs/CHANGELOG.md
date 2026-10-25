@@ -11,6 +11,7 @@ WDAIDT V0.9.3 completes the alignment audit against the official Devpost Learn A
 - **Checklist Slicing & Code Tour Completion**: Appended Slice 12 to `devpost/checklist.md` tracking the visual map deliverable and verifying the 3-stop code tour route.
 - **Requirements Matrix Refinement**: Updated `docs/SUBMISSION_READINESS.md` with explicit categorization distinguishing mandatory requirements from recommended artifacts and optional features (such as live cloud hosting and Discord peer reviews).
 - **Metadata Synchronization**: Synchronized release version `0.9.3` across `extension/manifest.json`, `extension/src/content/chatgpt.js`, `extension/src/sidepanel/app.js`, backend router docstrings, and repository documentation.
+- **Model Reference Standardization**: Corrected model-switching instructions and architecture descriptions in `devpost/app-map.html` to consistently specify `gemini-3.5-flash-lite`, matching the backend runtime configuration in `backend/app/analysis/analyzer.py` and `backend/.env.example`.
 
 Detailed technical notes are preserved in [V0.9.3 technical notes](V0.9.3.md).
 
