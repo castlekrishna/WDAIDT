@@ -1,4 +1,4 @@
-/* WDAIDT side-panel controller (V0.9 — Submission Polish & Release Readiness).
+/* WDAIDT side-panel controller (V0.9.1 — Submission Polish & Release Readiness).
  * Only this layer talks to the backend. Content script only captures.
  * Renders flexible LLM-generated documents with variable block combinations.
  */
@@ -27,9 +27,9 @@
 
   // V0.6 In-memory settings state
   const settingsState = {
-    responseStyle: 'Professional and direct',
+    responseStyle: 'Friendly and conversational',
     customInstructions: '',
-    analysisDepth: 'Balanced',
+    analysisDepth: 'Brief',
     contextWindow: 5
   };
 

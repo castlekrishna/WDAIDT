@@ -303,7 +303,7 @@ test('exportDocumentToMarkdown: formats full document including next_prompt to c
 
 test('settings: default style and depth preferences are properly initialized', () => {
   const { exports } = createSandbox();
-  assert.equal(exports.settingsState.responseStyle, 'Professional and direct');
-  assert.equal(exports.settingsState.analysisDepth, 'Balanced');
+  assert.equal(exports.settingsState.responseStyle, 'Friendly and conversational');
+  assert.equal(exports.settingsState.analysisDepth, 'Brief');
   assert.equal(exports.settingsState.customInstructions, '');
 });

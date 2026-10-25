@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "0.9.0",
-  "description": "V0.9: Submission polish, verified setup clarity, and reliable AI response explanation for ChatGPT.",
+  "version": "0.9.1",
+  "description": "V0.9.1: Submission polish, default Friendly & Brief settings, and reliable AI response explanation for ChatGPT.",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "assets/icon16.png",

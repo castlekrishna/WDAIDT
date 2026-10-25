@@ -25,7 +25,7 @@ const WDAIDT_CONFIG = Object.freeze({
     'Academic and analytical',
     'Custom instructions'
   ],
-  DEFAULT_RESPONSE_STYLE: 'Professional and direct',
+  DEFAULT_RESPONSE_STYLE: 'Friendly and conversational',
 
   // V0.6 Analysis Depth presets
   ANALYSIS_DEPTHS: [
@@ -33,7 +33,7 @@ const WDAIDT_CONFIG = Object.freeze({
     'Balanced',
     'Detailed'
   ],
-  DEFAULT_ANALYSIS_DEPTH: 'Balanced',
+  DEFAULT_ANALYSIS_DEPTH: 'Brief',
 
   // V0.7 Multi-Context Window presets (maximum preceding exchanges)
   CONTEXT_WINDOWS: [

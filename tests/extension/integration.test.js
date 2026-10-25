@@ -168,9 +168,9 @@ test('postAnalyze transmits prompt, response, context, request_id, response_styl
   assert.equal(capturedBody.response, 'Current A');
   assert.equal(capturedBody.request_id, 'custom-req-id');
   assert.deepEqual(capturedBody.context, context);
-  assert.equal(capturedBody.response_style, 'Professional and direct');
+  assert.equal(capturedBody.response_style, 'Friendly and conversational');
   assert.equal(capturedBody.custom_instructions, null);
-  assert.equal(capturedBody.analysis_depth, 'Balanced');
+  assert.equal(capturedBody.analysis_depth, 'Brief');
   assert.equal(res.request_id, 'custom-req-id');
 });
 
