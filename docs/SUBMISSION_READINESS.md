@@ -4,7 +4,7 @@
 **Target Challenge:** [Devpost Build With AI: Basics](https://learn-ai-basics.devpost.com/)  
 **Submission Deadline:** October 26, 2026 at 2:00 PM PDT (5:00 PM EDT)  
 **Audit Date:** October 25, 2026  
-**Audited Release Version:** V0.9.3  
+**Audited Release Version:** V1.0.0  
 **Final Release Decision:** **READY FOR FINAL HUMAN VERIFICATION**
 
 ---
@@ -17,7 +17,7 @@ WDAIDT has successfully passed all automated technical, security, documentation,
 - **Fresh Build Eligibility**: Confirmed that repository commits began on **October 12, 2026**, well after the hackathon opening date of **September 22, 2026**.
 - **Planning Artifacts**: Created canonical planning documents matching the official Skill Pack templates (`scope.md`, `prd.md`, `spec.md`, and `devpost/checklist.md`).
 - **Open-Source License**: Formally licensed under the standard MIT License (`LICENSE`) with copyright 2026 Krishna Kumar and Lidiya.
-- **Engineering Baseline**: 163 passing automated regression tests (103 extension unit/integration tests + 60 backend unit tests) with 0 failures and 0 skipped tests.
+- **Engineering Baseline**: 165 passing automated regression tests (104 extension unit/integration tests + 61 backend unit tests) with 0 failures and 0 skipped tests.
 - **Pending Human Actions**: Engineering and repository readiness is complete; final submission awaits human demo-video recording (1–3 minutes) and Devpost form submission prior to the deadline.
 
 ---
@@ -28,11 +28,11 @@ WDAIDT has successfully passed all automated technical, security, documentation,
 |---|---|---|---|---|---|
 | **REQ-01** | **Submission Deadline**<br>Register & submit before Oct 26, 2026, 2:00 PM PDT<br>*(Source: Official Rules)* | Required | Current audit completed Oct 25, 2026, ahead of the deadline. | **PASS** | Complete manual Devpost submission before deadline. *(Owner: Krishna Kumar, Lidiya)* |
 | **REQ-02** | **Fresh Build Rule**<br>Must be a fresh build created during hackathon period (Sept 22 – Oct 26)<br>*(Source: Official Rules & FAQ)* | Required | Submission period opened Sept 22, 2026. Git history verifies initial commit `243407d` on Oct 12, 2026. | **PASS** | None. Project is verified fresh. |
-| **REQ-03** | **Working Proof-of-Concept**<br>Must be a working PoC application addressing a real need<br>*(Source: Guidelines & Rules)* | Required | Working Chrome extension + FastAPI backend. Verified with 163 passing automated tests and live browser execution. | **PASS** | None. PoC is fully verified. |
+| **REQ-03** | **Working Proof-of-Concept**<br>Must be a working PoC application addressing a real need<br>*(Source: Guidelines & Rules)* | Required | Working Chrome extension + FastAPI backend. Verified with 165 passing automated tests and live browser execution. | **PASS** | None. PoC is fully verified. |
 | **REQ-04** | **Public GitHub Repository**<br>Publicly accessible GitHub repository URL<br>*(Source: Submission Form)* | Required | Publicly accessible at `https://github.com/castlekrishna/WDAIDT`. Checked for zero committed credentials. | **PASS** | None. Repository is public and clean. |
 | **REQ-05** | **Open Source License**<br>Open source license condition<br>*(Source: Skill Pack Ref / Standard)* | Recommended | `LICENSE` file created with standard MIT License (Copyright 2026 Krishna Kumar, Lidiya). | **PASS** | None. Formally licensed under MIT. |
 | **REQ-06** | **Planning Artifacts**<br>Scope, PRD, and Spec documents defining project<br>*(Source: Skill Pack: 2-scope, 3-prd, 4-spec)* | Required for Skill Pack Flow | Canonical planning artifacts approved in `devpost/` (`scope.md`, `prd.md`, `spec.md`). Frontmatter matches schema. | **PASS** | None. Documents approved. |
-| **REQ-07** | **Build Slices & Checklist**<br>Ordered, verified build steps tracked in checklist<br>*(Source: Skill Pack: 5-build)* | Recommended | `devpost/checklist.md` tracks 12 verified build slices with commits, mechanical verification, and review records. | **PASS** | None. All slices verified. |
+| **REQ-07** | **Build Slices & Checklist**<br>Ordered, verified build steps tracked in checklist<br>*(Source: Skill Pack: 5-build)* | Recommended | `devpost/checklist.md` tracks 13 verified build slices with commits, mechanical verification, and review records. | **PASS** | None. All slices verified. |
 | **REQ-08** | **Visual Architecture Takeaway Map**<br>Standalone, offline visual map and code tour (`app-map.html`)<br>*(Source: Skill Pack: 5-build)* | Recommended | Generated `devpost/app-map.html` with SVG data flow, 3-stop code tour, and "To change this, start here" pointers. | **PASS** | None. Standalone HTML generated. |
 | **REQ-09** | **Skill Pack Usage Report**<br>Documentation of stages, recommendations, and deviations<br>*(Source: Skill Pack Audit & Devpost form)* | Recommended | Created `devpost/skillpack-usage.md` detailing adopted, adapted, and skipped recommendations. | **PASS** | None. Complete report published. |
 | **REQ-10** | **Demo Video (1–3 Minutes)**<br>Short video demonstrating working PoC end-to-end<br>*(Source: Submission Rules)* | Required | Video walkthrough script and core journey defined in `prd.md`. Recording and upload pending. | **PARTIAL** | Record 1–3 min screen walkthrough and upload to YouTube/Vimeo. *(Owner: Krishna Kumar, Lidiya)* |
@@ -72,13 +72,13 @@ When submitting on Devpost, provide this honest response:
 ```bash
 node --test tests/extension/*.test.js
 ```
-- **Tests Executed**: 103
-- **Passed**: 103
+- **Tests Executed**: 104
+- **Passed**: 104
 - **Failed**: 0
 - **Skipped**: 0
-- **Duration**: 5.23 seconds
+- **Duration**: 5.43 seconds
 - **Key Suites Verified**:
-  - `day1.smoke.test.js`: Manifest MV3 validity, permissions, path references.
+  - `day1.smoke.test.js`: Manifest MV3 validity, version synchronization (1.0.0), permissions, path references.
   - `capture.test.js`: DOM extraction strategies, shadow roots, SPA route transitions, survey/disclaimer exclusions.
   - `capture_audit.test.js`: Layout boundaries, full-text preservation, accordion toggling.
   - `auto.test.js`: MutationObserver stream completion detection and settle debouncing.
@@ -91,16 +91,16 @@ node --test tests/extension/*.test.js
 ```bash
 python -m pytest tests/backend/ -v
 ```
-- **Tests Executed**: 60
-- **Passed**: 60
+- **Tests Executed**: 61
+- **Passed**: 61
 - **Failed**: 0
 - **Skipped**: 0
-- **Duration**: 0.59 seconds
+- **Duration**: 1.46 seconds
 - **Key Suites Verified**:
-  - `test_health.py`: `GET /health` returns `200 OK` with `{"status":"ok"}`.
+  - `test_health.py`: `GET /health` returns `200 OK` with `{"status":"ok"}`, app version metadata matches `1.0.0`.
   - `test_analyze.py`: Pydantic schema validation, size boundaries (413), validation errors (422), mock mode, master prompt anti-narration, multi-context omission detection, contradiction detection, and prompt injection isolation.
 
-**Combined Automated Baseline**: **163 passing tests** (100% pass rate).
+**Combined Automated Baseline**: **165 passing tests** (100% pass rate).
 
 ---
 
@@ -125,10 +125,11 @@ python -m pytest tests/backend/ -v
 - [x] **`devpost/scope.md`**: Approved scope planning artifact.
 - [x] **`devpost/prd.md`**: Approved product requirements document.
 - [x] **`devpost/spec.md`**: Approved technical specification.
-- [x] **`devpost/checklist.md`**: Approved build checklist tracking all 12 slices.
+- [x] **`devpost/checklist.md`**: Approved build checklist tracking all 13 slices.
 - [x] **`devpost/skillpack-usage.md`**: Comprehensive Skill Pack alignment and recommendations report.
 - [x] **`devpost/app-map.html`**: Standalone visual architecture map and code tour.
-- [x] **`docs/CHANGELOG.md`**: Reverse chronological history from V0.1 through V0.9.3.
+- [x] **`docs/CHANGELOG.md`**: Reverse chronological history from V0.1 through V1.0.0.
+- [x] **`docs/V1.0.0.md`**: Detailed technical milestone documentation for stable release V1.0.0.
 - [x] **`docs/V0.9.3.md`**: Detailed technical milestone documentation for Skill Pack alignment.
 - [x] **`docs/V0.9.2.md`**: Detailed technical milestone documentation for compliance audit.
 - [x] **Link Integrity**: 100% valid relative Markdown links across all documents.

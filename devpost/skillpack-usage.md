@@ -2,7 +2,7 @@
 doc: skillpack-usage
 status: approved
 target: devpost-learn-ai-basics
-version: 0.9.3
+version: 1.0.0
 ---
 
 # Devpost Learn AI Basics — Skill Pack Usage & Alignment Report
@@ -30,7 +30,7 @@ The **Build With AI: Basics** hackathon provides a 6-stage curriculum (`1-start`
 | **`2-scope`** | Kernel identification, proof-of-concept bounding, and explicit cuts (`devpost/scope.md`). | **Fully Adopted**: Authored [`devpost/scope.md`](scope.md). Locked the unique kernel to evidence-based diagnostic explanations and copyable next prompts for ChatGPT. Explicitly cut multi-platform support, user account databases, and cloud hosting. | **COMPLETED** |
 | **`3-prd`** | Product interview, screens, layout, core journey, and acceptance criteria (`devpost/prd.md`). | **Fully Adopted**: Authored [`devpost/prd.md`](prd.md). Grounded in the core user journey (Prompt in ChatGPT &rarr; Click Why? &rarr; Review diagnostic document &rarr; Copy next prompt). Established strict epistemic honesty guidelines. | **COMPLETED** |
 | **`4-spec`** | Technical architecture, component boundaries, schemas, and run instructions (`devpost/spec.md`). | **Fully Adopted**: Authored [`devpost/spec.md`](spec.md). Defined Manifest V3 content script & side panel contracts, FastAPI `/analyze` and `/health` endpoints, 9-block Pydantic schemas, and passive XML prompt isolation. | **COMPLETED** |
-| **`5-build`** | Sliced execution, mechanical verification, hands-on review, and code tour (`devpost/checklist.md`, `devpost/app-map.html`). | **Fully Adopted**: Authored [`devpost/checklist.md`](checklist.md) tracking 12 vertical slices (V0.1–V0.9.3), all mechanically verified (163 automated tests). Generated [`devpost/app-map.html`](app-map.html) as a standalone offline architectural map. | **COMPLETED** |
+| **`5-build`** | Sliced execution, mechanical verification, hands-on review, and code tour (`devpost/checklist.md`, `devpost/app-map.html`). | **Fully Adopted**: Authored [`devpost/checklist.md`](checklist.md) tracking 13 vertical slices (V0.1–V1.0.0), all mechanically verified (165 automated tests). Generated [`devpost/app-map.html`](app-map.html) as a standalone offline architectural map. | **COMPLETED** |
 | **`6-ship`** | Public GitHub repo, MIT license, short demo video, and Devpost submission responses. | **Adopted / Ready for Human Action**: MIT License added ([`LICENSE`](../LICENSE)), public GitHub repository audited for zero secrets, submission answers drafted in [`docs/SUBMISSION_READINESS.md`](../docs/SUBMISSION_READINESS.md). 1–3 min demo video recording pending human action. | **READY FOR HUMAN ACTION** |
 
 ---

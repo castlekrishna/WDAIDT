@@ -1,4 +1,4 @@
-"""Core analysis engine for WDAIDT V0.6.
+"""Core analysis engine for WDAIDT V1.0.0.
 
 Transforms (Prompt + AI Response) into an adaptive, structured document:
 - AnalysisDocument with title and ordered collection of validated content blocks.

@@ -129,6 +129,16 @@ Build mode: fast
   Learner check: Open `devpost/app-map.html` in browser and verify SVG diagram and code stops.
   Commit: `feat: WDAIDT V0.9.3 — Final Skill Pack Alignment & Architectural Map`
 
+- [x] **13. Final Stabilization, Verification & Release Preparation (V1.0.0)**
+  Becomes usable: Production-ready V1.0.0 release of the Chrome Extension and FastAPI backend, standalone extension distribution package, and release documentation.
+  Why now: Final stable release milestone establishing canonical 1.0.0 versioning, verified test baselines, clean release deliverables, and reproducible local startup.
+  PRD ref: `prd.md > What We're Building`
+  Spec ref: `spec.md > Stack`
+  Build: Synchronized version 1.0.0 across all components, created clean Chrome extension ZIP package, authored V1.0.0 release notes (`docs/V1.0.0.md`), updated README and changelog.
+  Verify (mechanical): Full regression baseline executed (104 extension tests + 61 backend tests, 165 total passing), zero syntax errors, clean ZIP structure verified.
+  Learner check: Verified standalone extension loads in Chrome and communicates with local FastAPI backend on `http://localhost:8000`.
+  Commit: `Release WDAIDT v1.0.0: Final stabilization, verification, and release preparation`
+
 ## Hands-on Checkpoints
 - [x] Early usable behavior explored — V0.1 manual capture verified in Chrome side panel.
 - [x] Mid-build multi-turn checkpoint — V0.4 multi-turn conversation extraction verified live.

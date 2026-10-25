@@ -25,6 +25,13 @@ test('manifest.json is valid MV3 with side panel + ChatGPT content script', () =
   for (const r of refs) assert.ok(fs.existsSync(path.join(ext, r)), `missing: ${r}`);
 });
 
+test('version is synchronized to 1.0.0 across manifest and extension source', () => {
+  const m = JSON.parse(read(path.join(ext, 'manifest.json')));
+  assert.equal(m.version, '1.0.0');
+  const chatgptSrc = read(path.join(ext, 'src', 'content', 'chatgpt.js'));
+  assert.ok(chatgptSrc.includes("const VERSION = '1.0.0';"));
+});
+
 test('shared contract declares Day-1 + reserved Day-3 message types', () => {
   const src = read(path.join(ext, 'src', 'shared', 'messages.js'));
   for (const t of ['GET_LATEST', 'ANALYZE_LATEST', 'AUTO_ANALYZE_ON', 'AUTO_ANALYZE_OFF', 'ANALYSIS_RESULT']) {

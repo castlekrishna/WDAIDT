@@ -1,4 +1,4 @@
-"""System prompts, templates, and runtime prompt composition for WDAIDT V0.6.
+"""System prompts, templates, and runtime prompt composition for WDAIDT V1.0.0.
 
 Defines the authoritative master analysis prompt focusing on diagnostic quality,
 omission identification, improvement opportunities, and actionable next steps.

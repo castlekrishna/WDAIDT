@@ -2,6 +2,19 @@
 
 All notable changes to Why Did AI Do That? are documented here. Versions are listed from newest to oldest.
 
+## V1.0.0 — Stable Release
+
+WDAIDT V1.0.0 is the first official stable release of **Why Did AI Do That?**, establishing a fully verified, reproducible, and documented distribution baseline. This milestone locks the product scope, synchronizes canonical versioning across all components, hardens repository hygiene, expands automated regression coverage, and produces a verified, clean Chrome Extension distribution package.
+
+- **Stable Scope Freeze**: Preserved the two-component architecture consisting of the Chrome Manifest V3 Extension (`extension/`) communicating with the local FastAPI backend (`backend/`) on `http://localhost:8000`. No external cloud databases, analytics, or unneeded abstractions were introduced.
+- **Canonical Version Synchronization**: Synchronized version `1.0.0` across `extension/manifest.json`, `extension/src/content/chatgpt.js` (`VERSION = '1.0.0'`), `extension/src/sidepanel/app.js`, backend router docstrings (`backend/app/api/analyze.py`), FastAPI app metadata (`backend/app/main.py`), and repository documentation.
+- **Automated Regression Expansion**: Added automated version-synchronization verification tests to both test runners (`tests/extension/day1.smoke.test.js` and `tests/backend/test_health.py`), establishing a new test baseline of **165 total passing automated tests** (104 extension tests + 61 backend tests, 0 failures, 0 skipped).
+- **Clean Chrome Extension Package**: Packaged a production-ready, clean distribution archive (`WDAIDT-v1.0.0-chrome-extension.zip`) containing strictly the extension runtime files with `manifest.json` at the archive root, excluding all backend code, virtual environments, tests, and temporary artifacts.
+- **Repository Hygiene & Git Exclusion**: Hardened `.gitignore` to explicitly exclude Python pytest caches (`.pytest_cache/`), archive packages (`*.zip`, `dist/`), virtual environments (`.venv/`, `env/`, `venv/`), and environment files (`.env.*`) while maintaining tracked templates (`backend/.env.example`).
+- **Comprehensive Release Documentation**: Authored `docs/V1.0.0.md` providing complete architecture diagrams, component responsibilities, cross-platform local server setup commands (PowerShell and Bash), health verification, Gemini and Mock Mode configuration, and release verification checklists.
+
+Detailed technical notes and verification results are preserved in [V1.0.0 technical notes](V1.0.0.md).
+
 ## V0.9.3 — Final Skill Pack Alignment Audit & Architectural Map
 
 WDAIDT V0.9.3 completes the alignment audit against the official Devpost Learn AI Basics Skill Pack curriculum (`challengepost/learn-ai-basics`). This release documents the project's stage-by-stage methodology, creates an offline standalone visual architecture map, and updates the compliance verification baseline.

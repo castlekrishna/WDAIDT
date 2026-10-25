@@ -1,7 +1,25 @@
+# Dependencies & Virtual Environments
 node_modules/
+.venv/
+env/
+venv/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Python caches & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS artifacts
 .DS_Store
 Thumbs.db
 *.log
-.env
-.venv/
-__pycache__/
+
+# Build & distribution archives
+dist/
+*.zip

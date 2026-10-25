@@ -20,3 +20,8 @@ def test_health_returns_ok():
     assert response.status_code == 200
     data = response.json()
     assert data == {"status": "ok"}
+
+
+def test_app_version_is_v1_0_0():
+    """Verify backend FastAPI application version metadata is synchronized to 1.0.0."""
+    assert app.version == "1.0.0"

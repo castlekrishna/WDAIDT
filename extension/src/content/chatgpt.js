@@ -21,7 +21,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '0.9.3';
+  const VERSION = '1.0.0';
   const TYPE_GET_LATEST = 'WDAIDT_GET_LATEST';
   const TYPE_PING = 'WDAIDT_PING';
 

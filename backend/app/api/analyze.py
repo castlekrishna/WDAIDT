@@ -1,4 +1,4 @@
-"""API Router for /analyze and /health endpoints in WDAIDT V0.9.3."""
+"""API Router for /analyze and /health endpoints in WDAIDT V1.0.0."""
 
 import logging
 import time

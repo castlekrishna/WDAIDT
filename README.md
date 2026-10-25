@@ -3,7 +3,7 @@
 > **Ever wonder why ChatGPT answered your prompt the way it did?**  
 > WDAIDT is a browser extension that lives in your Chrome side panel, providing real-time, evidence-based diagnostic explanations and ready-to-use follow-up prompts for your ChatGPT conversations.
 
-[Repository](https://github.com/castlekrishna/WDAIDT) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Latest Milestone Notes (V0.9.3)](docs/V0.9.3.md)
+[Repository](https://github.com/castlekrishna/WDAIDT) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Release Notes (V1.0.0)](docs/V1.0.0.md)
 
 ---
 
@@ -136,7 +136,7 @@ The backend is built with FastAPI and runs locally on your machine.
 2. Turn ON **Developer mode** (toggle in the upper-right corner).
 3. Click **Load unpacked** (button in the upper-left corner).
 4. Select the `extension/` directory inside your cloned repository.
-5. That's it! **Why Did AI Do That?** is now installed (version 0.9.3).
+5. That's it! **Why Did AI Do That?** is now installed (version 1.0.0).
 
 ---
 
@@ -237,7 +237,7 @@ WDAIDT/
 │   ├── skillpack-usage.md          # Skill Pack alignment & recommendations report
 │   └── spec.md                     # Technical specification artifact
 ├── docs/
-│   ├── CHANGELOG.md                # Centralized historical changelog (V0.1–V0.9.3)
+│   ├── CHANGELOG.md                # Centralized historical changelog (V0.1–V1.0.0)
 │   ├── SUBMISSION_READINESS.md     # Hackathon audit & compliance matrix
 │   ├── V0.1.md                     # V0.1 extension foundation technical notes
 │   ├── V0.2.md                     # V0.2 backend foundation technical notes
@@ -249,9 +249,10 @@ WDAIDT/
 │   ├── V0.8.md                     # V0.8 stabilization release technical notes
 │   ├── V0.9.md                     # V0.9 submission polish technical notes
 │   ├── V0.9.2.md                   # V0.9.2 compliance audit technical notes
-│   └── V0.9.3.md                   # V0.9.3 Skill Pack alignment & app map notes
+│   ├── V0.9.3.md                   # V0.9.3 Skill Pack alignment & app map notes
+│   └── V1.0.0.md                   # V1.0.0 stable release technical notes
 ├── extension/
-│   ├── manifest.json               # Manifest V3 configuration (v0.9.3)
+│   ├── manifest.json               # Manifest V3 configuration (v1.0.0)
 │   ├── assets/                     # Extension icons (16px, 48px, 128px)
 │   └── src/
 │       ├── background/
@@ -283,7 +284,7 @@ WDAIDT/
 │           ├── analysis.py         # Pydantic models for AnalysisDocument & 9 blocks
 │           └── exceptions.py       # Domain exceptions and standardized HTTP envelopes
 └── tests/
-    ├── extension/                  # Node.js automated test suites (103 tests)
+    ├── extension/                  # Node.js automated test suites (104 tests)
     │   ├── auto.test.js            # Auto Analyze debounce & watcher tests
     │   ├── capture.test.js         # DOM extraction & shadow-root tests
     │   ├── capture_audit.test.js   # Layout bounds & full-text preservation tests
@@ -292,7 +293,7 @@ WDAIDT/
     │   ├── integration.test.js     # API communication & retry recovery tests
     │   ├── pipeline.test.js        # Extraction-to-request pipeline tests
     │   └── renderer.test.js        # Dynamic document block rendering tests
-    └── backend/                    # Pytest automated test suites (60 tests)
+    └── backend/                    # Pytest automated test suites (61 tests)
         ├── __init__.py
         ├── sample_data.py          # Test fixture archetypes
         ├── test_analyze.py         # Schemas, limits, error envelopes, quality evals
@@ -382,7 +383,7 @@ Exercises manifest validity, DOM capture strategies across shadow roots, SPA nav
 ```bash
 node --test tests/extension/*.test.js
 ```
-- **Observed Verification Result**: **103 passed**, 0 failed, 0 skipped (~5.2 seconds runtime).
+- **Observed Verification Result**: **104 passed**, 0 failed, 0 skipped (~5.4 seconds runtime).
 
 ### 2. Backend Test Suite (Pytest)
 Validates Pydantic schemas, all 9 document block types, payload size enforcement (413/422), error envelopes, mock engine behavior, retry recovery, anti-narration system prompts, multi-context omission detection, and prompt injection isolation:
@@ -390,10 +391,10 @@ Validates Pydantic schemas, all 9 document block types, payload size enforcement
 ```bash
 python -m pytest tests/backend/ -v
 ```
-- **Observed Verification Result**: **60 passed**, 0 failed, 0 skipped (~0.6 seconds runtime).
+- **Observed Verification Result**: **61 passed**, 0 failed, 0 skipped (~1.5 seconds runtime).
 
 ### Combined Test Baseline
-- **163 total passing automated tests** (100% pass rate).
+- **165 total passing automated tests** (100% pass rate).
 
 > [!NOTE]
 > Automated tests simulate DOM mutations and HTTP cycles. While they provide strong regression safety, they do not completely replace manual verification of the unpacked extension in Google Chrome against live ChatGPT interfaces.
@@ -457,7 +458,8 @@ Distributed under the [MIT License](LICENSE). Copyright (c) 2026 Krishna Kumar, 
 ## Documentation
 
 - [Submission Audit & Readiness Report](docs/SUBMISSION_READINESS.md): Hackathon compliance matrix, official rule verification, and release evaluation.
-- [Changelog (V0.1 – V0.9.3)](docs/CHANGELOG.md): Complete release history from the initial foundation through submission readiness.
+- [Changelog (V0.1 – V1.0.0)](docs/CHANGELOG.md): Complete release history from the initial foundation through stable release.
+- [V1.0.0 Technical Notes](docs/V1.0.0.md): Final stabilization, verification, and release notes.
 - [V0.9.3 Technical Notes](docs/V0.9.3.md): Final Skill Pack alignment audit, takeaway architecture map, and compliance verification.
 - [V0.9.2 Technical Notes](docs/V0.9.2.md): Submission readiness, hackathon compliance audit, and planning artifact synchronization.
 - [V0.9 Technical Notes](docs/V0.9.md): Release readiness, usability audit, and verification report.

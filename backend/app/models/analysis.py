@@ -1,4 +1,4 @@
-"""Pydantic data models for Why Did AI Do That? (WDAIDT) V0.6.
+"""Pydantic data models for Why Did AI Do That? (WDAIDT) V1.0.0.
 
 Single source of truth for the API agreement between Extension and Backend.
 Defines the Adaptive Analysis Architecture & Dynamic Document Schema.
@@ -216,7 +216,7 @@ class AnalysisRequest(BaseModel):
 
 
 class AnalysisResult(BaseModel):
-    """Structured response returned by POST /analyze in V0.6."""
+    """Structured response returned by POST /analyze in V1.0.0."""
     model_config = ConfigDict(extra="ignore")
 
     request_id: Optional[str] = Field(
