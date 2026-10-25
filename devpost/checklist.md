@@ -117,6 +117,17 @@ Build mode: fast
   Build: Added root and devpost planning docs, MIT LICENSE, submission readiness report, synchronized V0.9.2 metadata.
   Verify (mechanical): Syntax checks, manifest validation, full test suites (163 passing), zero-emoji audit.
   Learner check: Inspect `docs/SUBMISSION_READINESS.md` and verify all requirements.
+  Commit: `Release V0.9.2: Hackathon compliance, planning artifacts, licensing, and submission readiness`
+
+- [x] **12. Final Skill Pack Alignment & Visual App Map (V0.9.3)**
+  Becomes usable: Official Skill Pack alignment documentation (`devpost/skillpack-usage.md`) and standalone visual architectural map (`devpost/app-map.html`).
+  Why now: Delivers the formal visual code tour artifact and transparently audits adopted vs adapted Skill Pack recommendations.
+  PRD ref: `prd.md > What We're Building`
+  Spec ref: `spec.md > Architecture Diagram & Components`
+  Build: Added `devpost/skillpack-usage.md`, `devpost/app-map.html`, updated submission readiness audit matrix.
+  Verify (mechanical): Automated test suite verified (163 passing), zero-dependency offline rendering check.
+  Learner check: Open `devpost/app-map.html` in browser and verify SVG diagram and code stops.
+  Commit: `feat: WDAIDT V0.9.3 — Final Skill Pack Alignment & Architectural Map`
 
 ## Hands-on Checkpoints
 - [x] Early usable behavior explored — V0.1 manual capture verified in Chrome side panel.
@@ -129,10 +140,11 @@ Build mode: fast
 ## Code Tour and App Map
 - [x] Learning activity complete — audit of 6-tier DOM extraction pipeline, FastAPI validation envelopes, and Gemini prompt composition.
 - [x] Optional edit and transfer reflection addressed — default settings tuned to Friendly and Brief.
-- [x] App architecture mapped in `spec.md` and repository tree.
+- [x] Standalone visual architecture map generated in `devpost/app-map.html`.
 
 Activity and evidence: 163 passing automated unit/integration tests, zero security vulnerabilities, full epistemic modesty compliance.
-Route and stops: `extension/src/content/chatgpt.js` &rarr; `extension/src/sidepanel/app.js` &rarr; `backend/app/main.py` &rarr; `backend/app/analysis/prompts.py` &rarr; `backend/app/analysis/analyzer.py`.
+Route and stops: `extension/src/content/chatgpt.js` (`getLatestExchange`) &rarr; `backend/app/api/analyze.py` (`analyze_interaction`) &rarr; `extension/src/sidepanel/app.js` (`renderBlock`).
+Visual artifact: [`devpost/app-map.html`](app-map.html) (standalone, zero-dependency offline architecture map).
 Activity mode: live app in Chrome and local FastAPI service.
 
 ## Revisions
@@ -140,3 +152,4 @@ Activity mode: live app in Chrome and local FastAPI service.
 - Multi-context window bounded to a maximum rather than a minimum (V0.7) after discovering that early turns in new chats should never block analysis.
 - Smart retry implemented using retained `lastCapture` in memory (V0.9) to prevent tab focus loss during server disconnects.
 - Default explanation depth shifted to "Brief" and tone to "Friendly and conversational" (V0.9.1) to optimize first-run evaluator experience.
+- Standalone architectural map artifact and code tour generated as `devpost/app-map.html` and full Skill Pack recommendation audit documented in `devpost/skillpack-usage.md` (V0.9.3).

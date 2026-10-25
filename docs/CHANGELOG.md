@@ -2,6 +2,18 @@
 
 All notable changes to Why Did AI Do That? are documented here. Versions are listed from newest to oldest.
 
+## V0.9.3 — Final Skill Pack Alignment Audit & Architectural Map
+
+WDAIDT V0.9.3 completes the alignment audit against the official Devpost Learn AI Basics Skill Pack curriculum (`challengepost/learn-ai-basics`). This release documents the project's stage-by-stage methodology, creates an offline standalone visual architecture map, and updates the compliance verification baseline.
+
+- **Skill Pack Usage Report (`devpost/skillpack-usage.md`)**: Fully documented the adoption, adaptation, and rationale for all Skill Pack recommendations across stages 1 through 6, detailing how WDAIDT honors spec-driven development, thin vertical slicing, mechanical test verification, and privacy-preserving architecture.
+- **Standalone Visual Architecture Map (`devpost/app-map.html`)**: Implemented a self-contained, offline HTML architectural takeaway map with an inline SVG data flow diagram, a 3-stop code tour route (`chatgpt.js` &rarr; `analyze.py` &rarr; `app.js`), concrete "To change this, start here" pointers, and a reusable practice guide on epistemic modesty and passive XML delimiters.
+- **Checklist Slicing & Code Tour Completion**: Appended Slice 12 to `devpost/checklist.md` tracking the visual map deliverable and verifying the 3-stop code tour route.
+- **Requirements Matrix Refinement**: Updated `docs/SUBMISSION_READINESS.md` with explicit categorization distinguishing mandatory requirements from recommended artifacts and optional features (such as live cloud hosting and Discord peer reviews).
+- **Metadata Synchronization**: Synchronized release version `0.9.3` across `extension/manifest.json`, `extension/src/content/chatgpt.js`, `extension/src/sidepanel/app.js`, backend router docstrings, and repository documentation.
+
+Detailed technical notes are preserved in [V0.9.3 technical notes](V0.9.3.md).
+
 ## V0.9.2 — Submission Readiness & Compliance Audit
 
 WDAIDT V0.9.2 is a dedicated hackathon submission readiness, planning compliance, and repository audit milestone for the Devpost Build With AI: Basics hackathon. This release formalizes planning artifacts, establishes an open-source MIT license, completes a full engineering and privacy audit, and creates comprehensive submission verification reports.

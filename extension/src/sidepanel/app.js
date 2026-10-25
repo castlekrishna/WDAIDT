@@ -1,4 +1,4 @@
-/* WDAIDT side-panel controller (V0.9.2 — Submission Polish & Release Readiness).
+/* WDAIDT side-panel controller (V0.9.3 — Skill Pack Alignment & Release Readiness).
  * Only this layer talks to the backend. Content script only captures.
  * Renders flexible LLM-generated documents with variable block combinations.
  */

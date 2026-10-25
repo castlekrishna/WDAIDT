@@ -4,7 +4,7 @@
 **Target Challenge:** [Devpost Build With AI: Basics](https://learn-ai-basics.devpost.com/)  
 **Submission Deadline:** October 26, 2026 at 2:00 PM PDT (5:00 PM EDT)  
 **Audit Date:** October 25, 2026  
-**Audited Release Version:** V0.9.2  
+**Audited Release Version:** V0.9.3  
 **Final Release Decision:** **READY FOR FINAL HUMAN VERIFICATION**
 
 ---
@@ -24,38 +24,43 @@ WDAIDT has successfully passed all automated technical, security, documentation,
 
 ## B. Official Requirements Matrix
 
-| ID | Requirement Summary | Official Source | Type | Status | Evidence & Verification | Corrective Action |
-|---|---|---|---|---|---|---|
-| **REQ-01** | **Submission Deadline**<br>Register & submit before Oct 26, 2026, 2:00 PM PDT | Official Challenge Page & Rules | Mandatory | **PASS** | Current audit completed Oct 25, 2026, ahead of the deadline. | Complete manual submission before deadline. |
-| **REQ-02** | **Fresh Build Rule**<br>Must be a fresh build created during the hackathon period | Challenge FAQ & Devpost Rules | Mandatory | **PASS** | Submission period opened Sept 22, 2026. Git history verifies initial commit `243407d` on Oct 12, 2026. | None required; build is fully compliant. |
-| **REQ-03** | **Working Proof-of-Concept**<br>Must be a working PoC app addressing a useful problem | Challenge Guidelines & Rules | Mandatory | **PASS** | Working Chrome extension + FastAPI backend. Verified with 163 passing automated tests and live browser execution. | None required. |
-| **REQ-04** | **Public Repository**<br>Must provide a public GitHub repository URL | Submission Form ("Try it out") | Mandatory | **PASS** | Repository is publicly accessible at `https://github.com/castlekrishna/WDAIDT`. | None required. |
-| **REQ-05** | **Open Source License**<br>Repository should contain an appropriate open-source license | Skill Pack Reference (MIT) | Recommended | **PASS** | `LICENSE` file created with standard MIT License (Copyright 2026 Krishna Kumar, Lidiya). | None required. |
-| **REQ-06** | **Required Planning Documents**<br>Planning documents defining scope, requirements, and technical spec | Devpost Learn Skill Pack (`challengepost/learn-ai-basics`) | Required for Skill Pack flow | **PASS** | Canonical `scope.md`, `prd.md`, `spec.md`, and `devpost/checklist.md` created matching official schema. | None required. |
-| **REQ-07** | **Demo Video**<br>Short 1–3 min video demonstrating working PoC end-to-end | Submission Requirements | Mandatory | **PARTIAL** | Script and core journey defined in `prd.md`; pending physical screen recording and YouTube/Vimeo upload. | Human owner must record and upload 1–3 min video. |
-| **REQ-08** | **Skill Pack Form Question**<br>Explanation of how Devpost Learn Skill Pack was used | Submission Form Field | Mandatory | **PASS** | Honest, transparent explanation drafted in Section C of this report. | Paste drafted explanation into submission form. |
-| **REQ-09** | **Age of Majority**<br>Participants must be 18+ or legal age of majority | Eligibility Rules | Mandatory | **PASS** | Collaborators Krishna Kumar and Lidiya meet eligibility requirements. | Check mandatory checkbox on submission form. |
-| **REQ-10** | **Judging: Design**<br>Delivers a complete, coherent, well-designed product experience | Official Judging Criteria | Judging | **PASS** | Obsidian pitch-black theme, pure DOM rendering, high-contrast typography, and intuitive sidebar controls. | None required. |
-| **REQ-11** | **Judging: Innovation / Idea**<br>Novel, creative concept differentiating from generic tools | Official Judging Criteria | Judging | **PASS** | Real-time response diagnostics, epistemic modesty, multi-context constraint memory, and ready-to-use next prompts. | None required. |
-| **REQ-12** | **Judging: Presentation**<br>Clear communication of problem, user, and demonstrable functionality | Official Judging Criteria | Judging | **PASS** | Restructured user-first README with quick setup wizard; pending live demo video recording. | Keep video demonstration focused on the core loop. |
+| ID | Requirement and Source | Category | Current Evidence | Status | Remaining Action & Owner |
+|---|---|---|---|---|---|
+| **REQ-01** | **Submission Deadline**<br>Register & submit before Oct 26, 2026, 2:00 PM PDT<br>*(Source: Official Rules)* | Required | Current audit completed Oct 25, 2026, ahead of the deadline. | **PASS** | Complete manual Devpost submission before deadline. *(Owner: Krishna Kumar, Lidiya)* |
+| **REQ-02** | **Fresh Build Rule**<br>Must be a fresh build created during hackathon period (Sept 22 – Oct 26)<br>*(Source: Official Rules & FAQ)* | Required | Submission period opened Sept 22, 2026. Git history verifies initial commit `243407d` on Oct 12, 2026. | **PASS** | None. Project is verified fresh. |
+| **REQ-03** | **Working Proof-of-Concept**<br>Must be a working PoC application addressing a real need<br>*(Source: Guidelines & Rules)* | Required | Working Chrome extension + FastAPI backend. Verified with 163 passing automated tests and live browser execution. | **PASS** | None. PoC is fully verified. |
+| **REQ-04** | **Public GitHub Repository**<br>Publicly accessible GitHub repository URL<br>*(Source: Submission Form)* | Required | Publicly accessible at `https://github.com/castlekrishna/WDAIDT`. Checked for zero committed credentials. | **PASS** | None. Repository is public and clean. |
+| **REQ-05** | **Open Source License**<br>Open source license condition<br>*(Source: Skill Pack Ref / Standard)* | Recommended | `LICENSE` file created with standard MIT License (Copyright 2026 Krishna Kumar, Lidiya). | **PASS** | None. Formally licensed under MIT. |
+| **REQ-06** | **Planning Artifacts**<br>Scope, PRD, and Spec documents defining project<br>*(Source: Skill Pack: 2-scope, 3-prd, 4-spec)* | Required for Skill Pack Flow | Canonical planning artifacts approved in `devpost/` (`scope.md`, `prd.md`, `spec.md`). Frontmatter matches schema. | **PASS** | None. Documents approved. |
+| **REQ-07** | **Build Slices & Checklist**<br>Ordered, verified build steps tracked in checklist<br>*(Source: Skill Pack: 5-build)* | Recommended | `devpost/checklist.md` tracks 12 verified build slices with commits, mechanical verification, and review records. | **PASS** | None. All slices verified. |
+| **REQ-08** | **Visual Architecture Takeaway Map**<br>Standalone, offline visual map and code tour (`app-map.html`)<br>*(Source: Skill Pack: 5-build)* | Recommended | Generated `devpost/app-map.html` with SVG data flow, 3-stop code tour, and "To change this, start here" pointers. | **PASS** | None. Standalone HTML generated. |
+| **REQ-09** | **Skill Pack Usage Report**<br>Documentation of stages, recommendations, and deviations<br>*(Source: Skill Pack Audit & Devpost form)* | Recommended | Created `devpost/skillpack-usage.md` detailing adopted, adapted, and skipped recommendations. | **PASS** | None. Complete report published. |
+| **REQ-10** | **Demo Video (1–3 Minutes)**<br>Short video demonstrating working PoC end-to-end<br>*(Source: Submission Rules)* | Required | Video walkthrough script and core journey defined in `prd.md`. Recording and upload pending. | **PARTIAL** | Record 1–3 min screen walkthrough and upload to YouTube/Vimeo. *(Owner: Krishna Kumar, Lidiya)* |
+| **REQ-11** | **Learner Profile Privacy**<br>Personal context kept private and out of public repo<br>*(Source: Skill Pack: 6-ship)* | Recommended / Privacy Rule | Verified personal learner profiles are not committed. Repository is free of private context. | **PASS** | None. Privacy preserved. |
+| **REQ-12** | **Skill Pack Form Question**<br>Field on submission form asking how Skill Pack was used<br>*(Source: Devpost Submission Form)* | Required | Honest, evidence-based response drafted in Section C of this document. | **PASS** | Paste response into Devpost form. *(Owner: Krishna Kumar, Lidiya)* |
+| **REQ-13** | **Live Cloud Deployment**<br>Deploying application to public cloud hosting<br>*(Source: Skill Pack: 6-ship)* | Optional | Deliberately skipped for local privacy; local FastAPI + Chrome side panel is self-contained. | **PASS (Skipped)** | None. Confirmed optional by official rules. |
+| **REQ-14** | **Peer Review Quota / Discord Post**<br>Posting project thread or completing peer reviews<br>*(Source: Skill Pack: 6-ship)* | Optional | Confirmed strictly optional per official `6-ship/SKILL.md` rules. | **PASS (Skipped)** | Optional post may be made on Discord by owner. |
+| **REQ-15** | **Age of Majority**<br>Participants must be 18+ or legal age of majority<br>*(Source: Eligibility Rules)* | Required | Collaborators Krishna Kumar and Lidiya meet eligibility requirements. | **PASS** | Confirm checkbox on Devpost form. *(Owner: Krishna Kumar, Lidiya)* |
+| **REQ-16** | **Judging Criteria Alignment**<br>Design, Innovation, Technical Execution, Presentation<br>*(Source: Official Judging Criteria)* | Judging | Restrained Obsidian theme, pure DOM XSS safety, multi-context constraint detection, setup wizard in README. | **PASS** | Evaluators test via zero-config Mock Mode or live Gemini. |
 
 ---
 
 ## C. Skill Pack Compliance Analysis
 
-### 1. Historical Truth
+### 1. Historical Truth & Audit
 The project was originally architected and developed iteratively across milestones V0.1 through V0.9.1. The Devpost Learn CLI (`npx skills add challengepost/learn-ai-basics --all -y`) was not invoked during early technical prototyping.
 
-### 2. V0.9.2 Alignment Work
-In V0.9.2, WDAIDT was systematically audited against the Devpost Learn curriculum sequence:
-- **`2-scope`**: Formalized `scope.md` defining the unique kernel, target audience, core loop, POC boundaries, and explicit cuts.
-- **`3-prd`**: Formalized `prd.md` detailing the core journey, layout surfaces, 9 content block types, failure modes, and non-goals.
-- **`4-spec`**: Formalized `spec.md` documenting the technical stack, MV3 architecture, FastAPI schemas, Gemini integration, and file structure.
-- **`5-build`**: Formalized `devpost/checklist.md` tracking the 11 incremental development slices and verification checkpoints.
+In V0.9.2 and V0.9.3, WDAIDT was systematically audited and aligned against the Devpost Learn curriculum sequence:
+- **`1-start`**: Verified workspace clean state, zero tracked secrets, and private learner context isolation.
+- **`2-scope`**: Formalized `scope.md` and `devpost/scope.md` defining the unique kernel, target audience, core loop, POC boundaries, and explicit cuts.
+- **`3-prd`**: Formalized `prd.md` and `devpost/prd.md` detailing the core journey, layout surfaces, 9 content block types, failure modes, and epistemic honesty rules.
+- **`4-spec`**: Formalized `spec.md` and `devpost/spec.md` documenting the technical stack, MV3 architecture, FastAPI schemas, Gemini integration, and file structure.
+- **`5-build`**: Formalized `devpost/checklist.md` tracking 12 incremental development slices and verification checkpoints, and generated `devpost/app-map.html` as the offline visual code tour.
+- **`6-ship`**: Published open-source `LICENSE` (MIT), verified repository hygiene, documented Skill Pack usage in `devpost/skillpack-usage.md`, and prepared submission responses.
 
-### 3. Submission Form Answer Recommendation
+### 2. Submission Form Answer Recommendation
 When submitting on Devpost, provide this honest response:
-> *"WDAIDT was built during the hackathon period starting on October 12, 2026. While early engineering was prototyped iteratively, the project was audited against the Devpost Learn Skill Pack curriculum in V0.9.2, formalizing canonical scope (`scope.md`), product requirements (`prd.md`), technical specification (`spec.md`), and build verification (`devpost/checklist.md`) artifacts matching the curriculum specifications."*
+> *"WDAIDT was built during the hackathon period starting on October 12, 2026. While early engineering was prototyped iteratively, the project was audited against the Devpost Learn Skill Pack curriculum in V0.9.2 and V0.9.3. We formalized canonical scope (`scope.md`), product requirements (`prd.md`), technical specification (`spec.md`), build verification (`devpost/checklist.md`), and an offline architectural takeaway map (`devpost/app-map.html`) matching the official curriculum specifications. Our full adoption, adaptation, and rationale are documented in `devpost/skillpack-usage.md`."*
 
 ---
 
@@ -117,12 +122,15 @@ python -m pytest tests/backend/ -v
 
 - [x] **`README.md`**: Complete, user-first project overview with quick start wizard, settings guide, technical architecture, and zero emojis.
 - [x] **`LICENSE`**: Verified MIT License with copyright 2026 Krishna Kumar, Lidiya.
-- [x] **`scope.md`** & **`devpost/scope.md`**: Approved scope planning artifact.
-- [x] **`prd.md`** & **`devpost/prd.md`**: Approved product requirements document.
-- [x] **`spec.md`** & **`devpost/spec.md`**: Approved technical specification.
-- [x] **`devpost/checklist.md`**: Approved build checklist tracking all 11 slices.
-- [x] **`docs/CHANGELOG.md`**: Reverse chronological history from V0.1 through V0.9.2.
-- [x] **`docs/V0.9.2.md`**: Detailed technical milestone documentation.
+- [x] **`devpost/scope.md`**: Approved scope planning artifact.
+- [x] **`devpost/prd.md`**: Approved product requirements document.
+- [x] **`devpost/spec.md`**: Approved technical specification.
+- [x] **`devpost/checklist.md`**: Approved build checklist tracking all 12 slices.
+- [x] **`devpost/skillpack-usage.md`**: Comprehensive Skill Pack alignment and recommendations report.
+- [x] **`devpost/app-map.html`**: Standalone visual architecture map and code tour.
+- [x] **`docs/CHANGELOG.md`**: Reverse chronological history from V0.1 through V0.9.3.
+- [x] **`docs/V0.9.3.md`**: Detailed technical milestone documentation for Skill Pack alignment.
+- [x] **`docs/V0.9.2.md`**: Detailed technical milestone documentation for compliance audit.
 - [x] **Link Integrity**: 100% valid relative Markdown links across all documents.
 
 ---

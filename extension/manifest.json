@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "0.9.2",
-  "description": "V0.9.2: Submission polish, default Friendly & Brief settings, and reliable AI response explanation for ChatGPT.",
+  "version": "0.9.3",
+  "description": "V0.9.3: Skill Pack alignment, visual architecture map, and reliable AI response explanation for ChatGPT.",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "assets/icon16.png",
