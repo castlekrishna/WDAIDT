@@ -15,7 +15,8 @@
     'captureAccordionToggle', 'captureAccordionContent', 'captureChevron', 'captureStatusBadge',
     'settingsToggleBtn', 'settingsCloseBtn', 'settingsCard',
     'responseStyleSelect', 'customInstructionsGroup', 'customInstructionsInput',
-    'analysisDepthSelect', 'contextWindowSelect', 'captureContextBadge', 'documentTitle', 'documentContainer'
+    'analysisDepthSelect', 'contextWindowSelect', 'captureContextBadge', 'documentTitle', 'documentContainer',
+    'apiKeyInput', 'apiKeyToggleBtn', 'apiKeyClearBtn', 'apiKeyStatus', 'mockModeToggle'
   ].forEach((id) => { els[id] = $(id); });
 
   const CFG = () => globalThis.WDAIDT_CONFIG || {};
@@ -30,7 +31,9 @@
     responseStyle: 'Friendly and conversational',
     customInstructions: '',
     analysisDepth: 'Brief',
-    contextWindow: 5
+    contextWindow: 5,
+    apiKey: '',
+    mockMode: false
   };
 
   function fpSummary(fp) {
@@ -348,6 +351,15 @@
   }
 
   async function postAnalyze(prompt, response, requestId, context = []) {
+    if (!settingsState.apiKey && !settingsState.mockMode && typeof chrome !== 'undefined' && chrome?.storage?.local?.get) {
+      try {
+        const storedKey = await chrome.storage.local.get('wdaidt_gemini_api_key');
+        if (storedKey && storedKey.wdaidt_gemini_api_key) {
+          settingsState.apiKey = storedKey.wdaidt_gemini_api_key;
+          updateStatusIndicator();
+        }
+      } catch { /* storage inaccessible */ }
+    }
     const cfg = CFG();
     const base = cfg.BACKEND_BASE_URL || 'http://localhost:8000';
     const url = (globalThis.wdaidtAnalyzeUrl
@@ -364,13 +376,44 @@
       custom_instructions: settingsState.responseStyle === 'Custom instructions'
         ? settingsState.customInstructions
         : null,
-      analysis_depth: settingsState.analysisDepth
+      analysis_depth: settingsState.analysisDepth,
+      api_key: settingsState.apiKey
     };
     if (!body.prompt || !body.response) {
       const err = new Error('Missing prompt or response.');
       err.code = 'INVALID_REQUEST';
       throw err;
     }
+    // 1. Mock Mode (Zero-setup local analysis without network call)
+    if (settingsState.mockMode) {
+      const mockObj = (globalThis.WDAIDT_MOCK && globalThis.WDAIDT_MOCK.generateMockAnalysis)
+        || (typeof generateMockAnalysis !== 'undefined' ? generateMockAnalysis : null);
+      if (mockObj) {
+        return mockObj(body);
+      }
+    }
+
+    // 2. Direct Gemini REST API Client
+    const geminiObj = (globalThis.WDAIDT_GEMINI_CLIENT && globalThis.WDAIDT_GEMINI_CLIENT.callGemini)
+      || (typeof wdaidtCallGemini !== 'undefined' ? wdaidtCallGemini : null);
+    if (geminiObj) {
+      try {
+        return await geminiObj(body);
+      } catch (err) {
+        if (err && err.code === 'API_KEY_MISSING') {
+          const keyErr = new Error('Gemini API key is not configured. Click the gear icon in the top right to add your key, or toggle Mock Mode.');
+          keyErr.code = 'API_KEY_MISSING';
+          throw keyErr;
+        }
+        if (err && err.code === 'PAYLOAD_TOO_LARGE') {
+          const sizeErr = new Error('That conversation is too long for V1 limits (8k prompt / 20k response).');
+          sizeErr.code = 'PAYLOAD_TOO_LARGE';
+          throw sizeErr;
+        }
+        throw err;
+      }
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), cfg.FETCH_TIMEOUT_MS || 20000);
     try {
@@ -1036,29 +1079,23 @@
     });
   }
 
-  async function checkBackend() {
-    const cfg = CFG();
-    const base = cfg.BACKEND_BASE_URL || 'http://localhost:8000';
-    const url = globalThis.wdaidtHealthUrl ? globalThis.wdaidtHealthUrl(base) : base + '/health';
-    try {
-      if (els.statusDot) els.statusDot.className = 'status-dot checking';
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(t);
-      if (res.ok) {
-        if (els.backendLine) els.backendLine.textContent = `Backend: reachable at ${base}`;
-        if (els.statusDot) els.statusDot.className = 'status-dot connected';
-      } else {
-        if (els.backendLine) els.backendLine.textContent = `Backend: reachable but unhealthy (${res.status})`;
-        if (els.statusDot) els.statusDot.className = 'status-dot error';
-      }
-    } catch {
-      if (els.backendLine) els.backendLine.textContent = `Backend: not reachable at ${base} — start it to enable analysis`;
-      if (els.statusDot) els.statusDot.className = 'status-dot error';
+  function updateStatusIndicator() {
+    if (!els.backendLine || !els.statusDot) return;
+    if (settingsState.mockMode) {
+      els.backendLine.textContent = 'Mode: Mock (offline)';
+      els.statusDot.className = 'status-dot connected';
+    } else if (settingsState.apiKey && settingsState.apiKey.trim()) {
+      els.backendLine.textContent = 'Gemini: Ready';
+      els.statusDot.className = 'status-dot connected';
+    } else {
+      els.backendLine.textContent = 'Gemini: API Key required';
+      els.statusDot.className = 'status-dot warning';
     }
   }
 
+  async function checkBackend() {
+    updateStatusIndicator();
+  }
   async function notifyTabsAuto(on) {
     const types = MSGS();
     const type = on
@@ -1108,7 +1145,9 @@
         'wdaidt_response_style',
         'wdaidt_custom_instructions',
         'wdaidt_analysis_depth',
-        'wdaidt_context_window'
+        'wdaidt_context_window',
+        'wdaidt_gemini_api_key',
+        'wdaidt_mock_mode'
       ]);
       if (stored.wdaidt_response_style) {
         settingsState.responseStyle = stored.wdaidt_response_style;
@@ -1124,9 +1163,18 @@
       } else {
         settingsState.contextWindow = 5;
       }
+      if (stored && stored.wdaidt_gemini_api_key) {
+        settingsState.apiKey = stored.wdaidt_gemini_api_key;
+      }
+      if (stored && typeof stored.wdaidt_mock_mode === 'boolean') {
+        settingsState.mockMode = stored.wdaidt_mock_mode;
+      }
     } catch {
       /* fallback to defaults */
     }
+
+    // Synchronize global status indicator with retrieved settings
+    updateStatusIndicator();
 
     // 2. Synchronize UI controls
     if (els.responseStyleSelect) {
@@ -1143,6 +1191,28 @@
     }
     if (els.contextWindowSelect) {
       els.contextWindowSelect.value = String(settingsState.contextWindow);
+    }
+
+    function updateApiKeyStatusUI() {
+      if (!els.apiKeyStatus) return;
+      const hasKey = !!(settingsState.apiKey && settingsState.apiKey.trim());
+      if (hasKey) {
+        els.apiKeyStatus.textContent = 'Key saved locally';
+        els.apiKeyStatus.className = 'api-key-status saved';
+        if (els.apiKeyClearBtn) els.apiKeyClearBtn.hidden = false;
+      } else {
+        els.apiKeyStatus.textContent = 'Key not configured';
+        els.apiKeyStatus.className = 'api-key-status muted';
+        if (els.apiKeyClearBtn) els.apiKeyClearBtn.hidden = true;
+      }
+    }
+
+    if (els.apiKeyInput) {
+      els.apiKeyInput.value = settingsState.apiKey || '';
+      updateApiKeyStatusUI();
+    }
+    if (els.mockModeToggle) {
+      els.mockModeToggle.checked = !!settingsState.mockMode;
     }
 
     // 3. Attach event listeners
@@ -1207,6 +1277,54 @@
         } catch { /* non-fatal */ }
       });
     }
+
+    if (els.apiKeyInput) {
+      els.apiKeyInput.addEventListener('input', async () => {
+        const key = els.apiKeyInput.value.trim();
+        settingsState.apiKey = key;
+        updateApiKeyStatusUI();
+        updateStatusIndicator();
+        try {
+          if (key) {
+            await chrome.storage.local.set({ wdaidt_gemini_api_key: key });
+          } else {
+            await chrome.storage.local.remove('wdaidt_gemini_api_key');
+          }
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    if (els.apiKeyToggleBtn && els.apiKeyInput) {
+      els.apiKeyToggleBtn.addEventListener('click', () => {
+        const isMasked = els.apiKeyInput.type === 'password';
+        els.apiKeyInput.type = isMasked ? 'text' : 'password';
+        els.apiKeyToggleBtn.textContent = isMasked ? 'Hide' : 'Show';
+      });
+    }
+
+    if (els.apiKeyClearBtn && els.apiKeyInput) {
+      els.apiKeyClearBtn.addEventListener('click', async () => {
+        els.apiKeyInput.value = '';
+        settingsState.apiKey = '';
+        updateApiKeyStatusUI();
+        updateStatusIndicator();
+        try {
+          await chrome.storage.local.remove('wdaidt_gemini_api_key');
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    if (els.mockModeToggle) {
+      els.mockModeToggle.addEventListener('change', async () => {
+        const checked = !!els.mockModeToggle.checked;
+        settingsState.mockMode = checked;
+        updateStatusIndicator();
+        try {
+          await chrome.storage.local.set({ wdaidt_mock_mode: checked });
+        } catch { /* non-fatal */ }
+      });
+    }
+
 
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       document.addEventListener('keydown', (e) => {
@@ -1283,7 +1401,9 @@
       notifyTabsAuto,
       runRetry,
       getLastCapture: () => lastCapture,
-      setLastCapture: (c) => { lastCapture = c; }
+      setLastCapture: (c) => { lastCapture = c; },
+      updateStatusIndicator,
+      initSettings
     };
   }
 })();

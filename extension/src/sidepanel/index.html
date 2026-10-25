@@ -81,6 +81,28 @@
           <option value="10">10 previous exchanges</option>
         </select>
       </div>
+
+      <div class="setting-group">
+        <label for="apiKeyInput" class="setting-label">Gemini API Key</label>
+        <span class="setting-desc">Required for live diagnosis. Key is stored locally in your browser profile.</span>
+        <div class="api-key-input-wrapper">
+          <input type="password" id="apiKeyInput" class="input-control" placeholder="AIzaSy..." autocomplete="off" spellcheck="false" />
+          <button id="apiKeyToggleBtn" class="ghost btn-mini" type="button" title="Show / Hide API Key">Show</button>
+          <button id="apiKeyClearBtn" class="ghost btn-mini" type="button" title="Clear API Key" hidden>Clear</button>
+        </div>
+        <div class="api-key-status-row">
+          <span id="apiKeyStatus" class="api-key-status muted">Key not configured</span>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="link-mini">Get free API key &#x2197;</a>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-checkbox-label">
+          <input type="checkbox" id="mockModeToggle" />
+          <span class="setting-label">Mock Mode (Zero Setup)</span>
+        </label>
+        <span class="setting-desc">Runs deterministic local analyses without calling the Gemini API or needing an API key.</span>
+      </div>
     </section>
 
     <!-- Main Controls Card -->
@@ -158,6 +180,10 @@
 
   <script src="../shared/messages.js"></script>
   <script src="../shared/config.js"></script>
+  <script src="../shared/prompts.js"></script>
+  <script src="../shared/validator.js"></script>
+  <script src="../shared/mock-analyzer.js"></script>
+  <script src="../shared/gemini-client.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

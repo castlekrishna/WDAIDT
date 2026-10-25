@@ -2,6 +2,19 @@
 
 All notable changes to Why Did AI Do That? are documented here. Versions are listed from newest to oldest.
 
+## V2.0.0 — Self-Contained Chrome Extension Release
+
+WDAIDT V2.0.0 converts **Why Did AI Do That?** into a completely self-contained Chrome Manifest V3 extension. Users no longer need to install Python, run a local FastAPI server, or use a terminal. The extension communicates directly with Google's Gemini API using a user-provided API key stored securely in local browser storage, or operates completely offline using built-in Mock Mode.
+
+- **Direct Gemini REST API Integration**: Replaced the local FastAPI backend dependency with direct HTTPS client calls to Google Generative Language API (`/v1beta/models/gemini-3.5-flash-lite:generateContent`) with automatic fallback to high-availability candidates (`gemini-flash-latest`, `gemini-3.8-flash`).
+- **In-Extension Settings & Secure Storage**: Integrated an API key configuration UI directly in the side panel settings with password masking, toggle view, clear controls, and local persistence via `chrome.storage.local`.
+- **Zero-Setup Mock Mode**: Included deterministic, zero-network mock analysis logic within the extension, allowing users to test explanations immediately without requiring an API key or internet access.
+- **Pure JavaScript Analysis Pipeline**: Ported prompt construction (`src/shared/prompts.js`), response schema validation (`src/shared/validator.js`), and mock generation (`src/shared/mock-analyzer.js`) into modular JavaScript matching the reference Python implementation.
+- **Robust Model Fallback & Error Handling**: Implemented candidate fallback for HTTP 404/503 responses, sanitized error messages preventing key leakage, and instant UI status indicator synchronization.
+- **Expanded Test Coverage**: Added comprehensive Node.js unit and integration tests covering the Gemini client, schema validation, mock generation, settings lifecycle, and backend-independent analysis (162 extension tests + 61 backend reference tests, 223 total passing tests).
+
+Detailed technical notes and verification results are preserved in [V2.0.0 technical notes](V2.0.0.md).
+
 ## V1.0.0 — Stable Release
 
 WDAIDT V1.0.0 is the first official stable release of **Why Did AI Do That?**, establishing a fully verified, reproducible, and documented distribution baseline. This milestone locks the product scope, synchronizes canonical versioning across all components, hardens repository hygiene, expands automated regression coverage, and produces a verified, clean Chrome Extension distribution package.

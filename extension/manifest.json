@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "1.0.0",
-  "description": "WDAIDT V1.0.0: Real-time, evidence-based diagnostic explanations and follow-up prompts for ChatGPT responses.",
+  "version": "2.0.0",
+  "description": "WDAIDT V2.0.0: Self-contained Chrome extension providing real-time, evidence-based diagnostic explanations and follow-up prompts for ChatGPT responses.",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "assets/icon16.png",
@@ -25,7 +25,11 @@
     "service_worker": "src/background/service-worker.js"
   },
   "permissions": ["sidePanel", "storage", "activeTab", "scripting"],
-  "host_permissions": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
