@@ -1,4 +1,4 @@
-/* WDAIDT side-panel controller (V0.8 — Stabilization & Reliability Release).
+/* WDAIDT side-panel controller (V0.9 — Submission Polish & Release Readiness).
  * Only this layer talks to the backend. Content script only captures.
  * Renders flexible LLM-generated documents with variable block combinations.
  */
@@ -802,6 +802,37 @@
     }
   }
 
+  async function runRetry() {
+    if (!lastCapture || !lastCapture.prompt || !lastCapture.response) {
+      return runWhy();
+    }
+    setButtonLoading(true);
+    if (els.retryBtn) els.retryBtn.hidden = true;
+    if (els.errorCard) els.errorCard.hidden = true;
+    showLoadingAnalysis();
+    try {
+      setStatus('Retrying analysis…');
+      if (els.captureCard) els.captureCard.hidden = false;
+      if (els.captureStatusBadge) els.captureStatusBadge.hidden = false;
+      const ctx = lastCapture.context || [];
+      if (els.captureContextBadge) {
+        els.captureContextBadge.textContent = formatContextBadgeText(ctx.length);
+      }
+      if (els.promptPreview) els.promptPreview.textContent = lastCapture.prompt || '(empty)';
+      if (els.responsePreview) els.responsePreview.textContent = lastCapture.response || '(empty)';
+
+      const requestId = newRequestId();
+      latestRequestId = requestId;
+      await analyzeCapture(lastCapture, requestId, ctx);
+    } catch (e) {
+      showError((e && e.message) || 'Analysis failed. Please try again.');
+      setStatus('Analysis failed.');
+    } finally {
+      setButtonLoading(false);
+    }
+  }
+
+
   function autoHash(prompt, response) {
     return `${(prompt || '').length}:${(response || '').length}:` +
       `${(prompt || '').slice(-120)}|${(response || '').slice(-120)}`;
@@ -1176,6 +1207,21 @@
         } catch { /* non-fatal */ }
       });
     }
+
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && els.settingsCard && !els.settingsCard.hidden) {
+          els.settingsCard.hidden = true;
+          if (els.settingsToggleBtn) {
+            els.settingsToggleBtn.setAttribute('aria-expanded', 'false');
+            if (typeof els.settingsToggleBtn.focus === 'function') {
+              els.settingsToggleBtn.focus();
+            }
+          }
+        }
+      });
+    }
+
   }
 
   // Global listeners
@@ -1191,7 +1237,7 @@
   }
 
   if (els.whyBtn) els.whyBtn.addEventListener('click', runWhy);
-  if (els.retryBtn) els.retryBtn.addEventListener('click', runWhy);
+  if (els.retryBtn) els.retryBtn.addEventListener('click', runRetry);
   if (els.diagBtn) els.diagBtn.addEventListener('click', copyDiagnostics);
   if (els.copyAnalysisBtn) els.copyAnalysisBtn.addEventListener('click', copyAnalysis);
 
@@ -1234,7 +1280,10 @@
       clearResult,
       renderResult,
       initAutoToggle,
-      notifyTabsAuto
+      notifyTabsAuto,
+      runRetry,
+      getLastCapture: () => lastCapture,
+      setLastCapture: (c) => { lastCapture = c; }
     };
   }
 })();

@@ -368,3 +368,37 @@ test('auto toggle initialization loads stored state and change listener broadcas
   assert.equal(store.wdaidt_auto_analyze, true);
   assert.ok(sentTabMessages.some((m) => m.msg.type === 'WDAIDT_AUTO_ANALYZE_ON'));
 });
+
+test('runRetry uses lastCapture directly when available upon service recovery', async () => {
+  let analyzedPayload = null;
+  const customFetch = async (url, opts) => {
+    analyzedPayload = JSON.parse(opts.body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        request_id: analyzedPayload.request_id,
+        analysis: {
+          title: 'Recovered Analysis',
+          blocks: [{ type: 'paragraph', content: 'Analysis after retry' }],
+        },
+      }),
+    };
+  };
+
+  const { exports, elements } = createIntegrationSandbox(customFetch);
+  exports.setLastCapture({
+    prompt: 'How does quicksort work?',
+    response: 'Quicksort is a divide-and-conquer algorithm.',
+    context: [{ prompt: 'Sort algorithms overview', response: 'Here are common sort algorithms.' }],
+  });
+
+  await exports.runRetry();
+
+  assert.ok(analyzedPayload, 'Fetch was executed');
+  assert.equal(analyzedPayload.prompt, 'How does quicksort work?');
+  assert.equal(analyzedPayload.response, 'Quicksort is a divide-and-conquer algorithm.');
+  assert.equal(analyzedPayload.context.length, 1);
+  assert.equal(elements.documentTitle.textContent, 'Recovered Analysis');
+  assert.equal(elements.errorCard.hidden, true);
+});

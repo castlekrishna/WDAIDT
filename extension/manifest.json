@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "0.8.0",
-  "description": "V0.8: Stabilized multi-context analysis, reliable dynamic document renderer, and robust extension-to-backend integration explaining what shaped ChatGPT responses.",
+  "version": "0.9.0",
+  "description": "V0.9: Submission polish, verified setup clarity, and reliable AI response explanation for ChatGPT.",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "assets/icon16.png",
