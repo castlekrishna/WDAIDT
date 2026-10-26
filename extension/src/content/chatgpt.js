@@ -44,6 +44,36 @@
     }
   }
 
+  // V3 Memory Enabled State (synced with chrome.storage.local)
+  let memoryEnabled = true;
+
+  function isMemoryEnabled() {
+    return memoryEnabled;
+  }
+
+  function setMemoryEnabled(val) {
+    memoryEnabled = !!val;
+  }
+
+  try {
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local?.get) {
+      chrome.storage.local.get(['wdaidt_memory_enabled'], (stored) => {
+        if (stored && typeof stored.wdaidt_memory_enabled === 'boolean') {
+          memoryEnabled = stored.wdaidt_memory_enabled;
+        }
+      });
+      if (chrome?.storage?.onChanged?.addListener) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === 'local' && changes.wdaidt_memory_enabled) {
+            memoryEnabled = !!changes.wdaidt_memory_enabled.newValue;
+          }
+        });
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
   function isChatGPTPage() {
     try {
       const host = window.location.hostname || '';
@@ -942,8 +972,8 @@
       winningNodes = bestPartialNodes;
     }
 
-    // Incremental V3 Conversation Persistence
-    if (winningNodes && winningNodes.length) {
+    // Incremental V3 Conversation Persistence (when memory is enabled)
+    if (winningNodes && winningNodes.length && isMemoryEnabled()) {
       try {
         const cap = getV3Capture();
         if (cap && typeof cap.capture === 'function') {
@@ -1039,10 +1069,66 @@
         .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
       return true;
     }
+
+    if (message.type === types.CLEAR_MEMORY || message.type === 'WDAIDT_CLEAR_MEMORY') {
+      handleClearMemory()
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
+
+    if (message.type === types.GET_MEMORY_STATS || message.type === 'WDAIDT_GET_MEMORY_STATS') {
+      handleGetMemoryStats()
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
     return false;
   }
 
+  async function handleClearMemory() {
+    try {
+      const cap = getV3Capture();
+      if (cap && typeof cap.resetActiveConversation === 'function') {
+        cap.resetActiveConversation();
+      }
+      const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+      if (storage && typeof storage.deleteDatabase === 'function') {
+        await storage.deleteDatabase();
+      }
+      return { ok: true, cleared: true };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  }
+
+  async function handleGetMemoryStats() {
+    try {
+      const cap = getV3Capture();
+      const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+      const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+      let accounting = { conversationCount: 0, totalMessageCount: 0, estimatedStorageBytes: 0 };
+      if (storage && typeof storage.getStorageAccounting === 'function') {
+        try {
+          accounting = await storage.getStorageAccounting();
+        } catch { /* ignore */ }
+      }
+      return {
+        ok: true,
+        accounting,
+        activeConversationId: activeConvId,
+        hasActiveHistory: !!activeConvId,
+        memoryEnabled: isMemoryEnabled()
+      };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  }
+
   async function handleBuildContext(payload) {
+    if (!isMemoryEnabled() || (payload && payload.memoryEnabled === false)) {
+      return { ok: true, contextResult: { exchanges: [], summary: null, isPartial: false } };
+    }
     const builder = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_CONTEXT_BUILDER) || null;
     if (!builder || typeof builder.buildConversationContext !== 'function') {
       return { ok: false, error: 'Context builder module not available.' };
@@ -1277,6 +1363,10 @@
       buildContext: handleBuildContext,
       runRetention: handleRunRetention,
       summarizeConversation: handleSummarizeConversation,
+      clearMemory: handleClearMemory,
+      getMemoryStats: handleGetMemoryStats,
+      isMemoryEnabled,
+      setMemoryEnabled,
     });
   } catch {
     // non-fatal
