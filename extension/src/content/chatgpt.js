@@ -374,7 +374,9 @@
       if (hasInnerRole(el)) continue; // avoid parent/child duplicates
       const text = visibleText(el);
       if (!text) continue;
-      out.push({ role, text });
+      const sourceMessageId = (el.getAttribute && el.getAttribute('data-message-id')) ||
+        (el.closest && el.closest('[data-message-id]') && el.closest('[data-message-id]').getAttribute('data-message-id')) || null;
+      out.push({ role, text, sourceMessageId });
     }
     debug(`role-attributes: ${out.length} nodes`);
     return out;
@@ -397,7 +399,8 @@
       const role = roleOf(el, auto % 2 === 0 ? 'user' : 'assistant');
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
-      out.push({ role, text });
+      const sourceMessageId = (el.getAttribute && el.getAttribute('data-message-id')) || null;
+      out.push({ role, text, sourceMessageId });
     }
     debug(`message-id: ${out.length} nodes`);
     return out;
@@ -413,7 +416,9 @@
       const role = roleOf(el, auto % 2 === 0 ? 'user' : 'assistant');
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
-      out.push({ role, text });
+      const sourceMessageId = (el.getAttribute && el.getAttribute('data-message-id')) ||
+        (el.querySelector && el.querySelector('[data-message-id]') && el.querySelector('[data-message-id]').getAttribute('data-message-id')) || null;
+      out.push({ role, text, sourceMessageId });
     }
     return out;
   }
@@ -521,7 +526,9 @@
       seenEls.add(turn.el);
       const text = visibleText(turn.el);
       if (!text || !text.trim()) continue;
-      out.push({ role: turn.role, text });
+      const sourceMessageId = (turn.el.getAttribute && turn.el.getAttribute('data-message-id')) ||
+        (turn.el.closest && turn.el.closest('[data-message-id]') && turn.el.closest('[data-message-id]').getAttribute('data-message-id')) || null;
+      out.push({ role: turn.role, text, sourceMessageId });
     }
     debug(`modern-turns: ${out.length} nodes`);
     return out;
@@ -642,7 +649,8 @@
       }
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
-      out.push({ role, text: b.text });
+      const sourceMessageId = (b.el.getAttribute && b.el.getAttribute('data-message-id')) || null;
+      out.push({ role, text: b.text, sourceMessageId });
     }
     // Weakest signal of all: hook-less text blocks may be anything (toasts,
     // tooltips, announcements). Only accept a COMPLETE ordered pair — a lone
@@ -824,6 +832,27 @@
 
   const EMPTY = { prompt: '', response: '', paired: false, userCount: 0, assistantCount: 0, history: [] };
 
+  let v3Capture = null;
+  function getV3Capture() {
+    if (!v3Capture && typeof globalThis !== 'undefined' && globalThis.WDAIDT_CAPTURE) {
+      try {
+        const storageEngine =
+          typeof globalThis.WDAIDT_DB !== 'undefined' &&
+          typeof globalThis.WDAIDT_DB.createStorageEngine === 'function'
+            ? globalThis.WDAIDT_DB.createStorageEngine()
+            : null;
+        v3Capture = globalThis.WDAIDT_CAPTURE.createConversationCapture({
+          storageEngine,
+          getUrl: currentUrl,
+          onError: (err) => debug(`v3Capture error: ${(err && err.message) || err}`)
+        });
+      } catch (err) {
+        debug(`v3Capture init failed: ${(err && err.message) || err}`);
+      }
+    }
+    return v3Capture;
+  }
+
   function getLatestInteraction() {
     const url = currentUrl();
     if (!isChatGPTPage()) {
@@ -849,6 +878,8 @@
     let r = { ...EMPTY };
     let bestPartial = null;
     let bestPartialStrategy = '';
+    let winningNodes = [];
+    let bestPartialNodes = [];
 
     for (const [name, fn] of attempts) {
       let nodes = [];
@@ -863,12 +894,14 @@
         // Complete paired turn wins immediately.
         strategy = name;
         r = candidate;
+        winningNodes = nodes;
         break;
       }
       if (candidate.prompt || candidate.response) {
         if (!bestPartial || (!bestPartial.response && candidate.response) || (!bestPartial.prompt && candidate.prompt)) {
           bestPartial = candidate;
           bestPartialStrategy = name;
+          bestPartialNodes = nodes;
         }
       }
     }
@@ -890,12 +923,14 @@
         if (candidate.paired && candidate.prompt && candidate.response) {
           strategy = name;
           r = candidate;
+          winningNodes = nodes;
           break;
         }
         if (candidate.prompt || candidate.response) {
           if (!bestPartial || (!bestPartial.response && candidate.response)) {
             bestPartial = candidate;
             bestPartialStrategy = name;
+            bestPartialNodes = nodes;
           }
         }
       }
@@ -904,6 +939,19 @@
     if (!r.paired && bestPartial) {
       r = bestPartial;
       strategy = bestPartialStrategy;
+      winningNodes = bestPartialNodes;
+    }
+
+    // Incremental V3 Conversation Persistence
+    if (winningNodes && winningNodes.length) {
+      try {
+        const cap = getV3Capture();
+        if (cap && typeof cap.capture === 'function') {
+          cap.capture(winningNodes).catch(() => {});
+        }
+      } catch {
+        /* non-fatal */
+      }
     }
 
     debug(
@@ -1149,6 +1197,7 @@
       isChatGPTPage,
       getLatest: getLatestInteraction,
       pairExchanges,
+      getConversationCapture: getV3Capture,
     });
   } catch {
     // non-fatal

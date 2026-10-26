@@ -226,7 +226,12 @@
       if (chrome && chrome.scripting && chrome.scripting.executeScript) {
         await chrome.scripting.executeScript({
           target: { tabId },
-          files: ['src/shared/messages.js', 'src/content/chatgpt.js']
+          files: [
+            'src/shared/messages.js',
+            'src/shared/db.js',
+            'src/content/conversation_capture.js',
+            'src/content/chatgpt.js'
+          ]
         });
         await new Promise((r) => setTimeout(r, 300));
         return true;
