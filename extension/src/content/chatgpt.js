@@ -1032,6 +1032,13 @@
         .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
       return true;
     }
+
+    if (message.type === types.SUMMARIZE_CONVERSATION || message.type === 'WDAIDT_SUMMARIZE_CONVERSATION') {
+      handleSummarizeConversation(message.payload || {})
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
     return false;
   }
 
@@ -1067,6 +1074,27 @@
       activeConversationId: (payload && payload.activeConversationId) || activeConvId
     });
     return { ok: true, report };
+  }
+
+  async function handleSummarizeConversation(payload) {
+    const summarizer = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_SUMMARIZER) || null;
+    if (!summarizer || typeof summarizer.summarizeConversation !== 'function') {
+      return { ok: false, error: 'Summarizer module not available.' };
+    }
+    const cap = getV3Capture();
+    const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+    const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+
+    const convId = (payload && payload.conversationId) || activeConvId;
+    if (!convId) {
+      return { ok: false, error: 'No active conversation found to summarize.' };
+    }
+
+    const result = await summarizer.summarizeConversation(storage, {
+      ...payload,
+      conversationId: convId
+    });
+    return { ok: true, result };
   }
 
   // ── Auto Analyze (V0.3): stream-completion trigger + debounce ──────────
@@ -1248,6 +1276,7 @@
       getConversationCapture: getV3Capture,
       buildContext: handleBuildContext,
       runRetention: handleRunRetention,
+      summarizeConversation: handleSummarizeConversation,
     });
   } catch {
     // non-fatal

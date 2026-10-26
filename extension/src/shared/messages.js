@@ -20,7 +20,8 @@ const WDAIDT_MESSAGES = Object.freeze({
   ANALYSIS_ERROR: 'WDAIDT_ANALYSIS_ERROR',
   // V3.0+ Context Builder & Storage Retention operations
   BUILD_CONTEXT: 'WDAIDT_BUILD_CONTEXT',
-  RUN_RETENTION: 'WDAIDT_RUN_RETENTION'
+  RUN_RETENTION: 'WDAIDT_RUN_RETENTION',
+  SUMMARIZE_CONVERSATION: 'WDAIDT_SUMMARIZE_CONVERSATION'
 });
 
 // Stale-result guard: drop a backend response whose echoed request_id no

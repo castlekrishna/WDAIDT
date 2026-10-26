@@ -240,6 +240,7 @@
             'src/shared/db.js',
             'src/shared/context_builder.js',
             'src/shared/retention.js',
+            'src/shared/summarizer.js',
             'src/content/conversation_capture.js',
             'src/content/chatgpt.js'
           ]

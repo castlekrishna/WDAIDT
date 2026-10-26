@@ -123,14 +123,28 @@
 
     // Step 2: Retrieve latest summary from conversation_memory
     let summaryText = null;
+    let mem = null;
     if (includeSummary && typeof storage.getConversationMemory === 'function') {
       try {
-        const mem = await storage.getConversationMemory(conv.conversationId);
-        if (mem && mem.compactSummary && typeof mem.compactSummary === 'string') {
-          const s = mem.compactSummary.trim();
-          if (s) {
-            summaryText = s;
-            result.summary = s;
+        mem = await storage.getConversationMemory(conv.conversationId);
+        if (mem) {
+          if (mem.status === 'stale') {
+            result.isPartial = true;
+            if (!result.partialReasons.includes('stale_summary')) {
+              result.partialReasons.push('stale_summary');
+            }
+          } else if (mem.status === 'failed') {
+            result.isPartial = true;
+            if (!result.partialReasons.includes('failed_summary')) {
+              result.partialReasons.push('failed_summary');
+            }
+          }
+          if (mem.compactSummary && typeof mem.compactSummary === 'string') {
+            const s = mem.compactSummary.trim();
+            if (s) {
+              summaryText = s;
+              result.summary = s;
+            }
           }
         }
       } catch {
@@ -217,6 +231,8 @@
           pairedExchanges.push({
             prompt: current.content.trim(),
             response: msgPool[i + 1].content.trim(),
+            promptMessageId: current.messageId,
+            responseMessageId: msgPool[i + 1].messageId,
             turnSequence: msgPool[i + 1].turnSequence
           });
           i += 2;
@@ -246,9 +262,30 @@
 
     // Step 7: Budget allocation prioritizing recent messages, summary, then older messages
     // Separate candidates into recent window vs older
-    const recentWindowSize = maxExchanges;
-    const recentCandidates = pairedExchanges.slice(-recentWindowSize);
-    const olderCandidates = pairedExchanges.slice(0, Math.max(0, pairedExchanges.length - recentWindowSize));
+    let recentCandidates = [];
+    let olderCandidates = [];
+
+    if (summaryText && mem && mem.sourceMessageCheckpoint) {
+      const chkIdx = pairedExchanges.findIndex(
+        ex => ex.responseMessageId === mem.sourceMessageCheckpoint || ex.promptMessageId === mem.sourceMessageCheckpoint
+      );
+      if (chkIdx >= 0) {
+        olderCandidates = pairedExchanges.slice(0, chkIdx + 1);
+        recentCandidates = pairedExchanges.slice(chkIdx + 1);
+        if (recentCandidates.length === 0 && pairedExchanges.length > 0) {
+          recentCandidates = [pairedExchanges[pairedExchanges.length - 1]];
+          olderCandidates = pairedExchanges.slice(0, -1);
+        }
+      } else {
+        const recentWindowSize = Math.max(1, maxExchanges - 1);
+        recentCandidates = pairedExchanges.slice(-recentWindowSize);
+        olderCandidates = pairedExchanges.slice(0, Math.max(0, pairedExchanges.length - recentWindowSize));
+      }
+    } else {
+      const recentWindowSize = maxExchanges;
+      recentCandidates = pairedExchanges.slice(-recentWindowSize);
+      olderCandidates = pairedExchanges.slice(0, Math.max(0, pairedExchanges.length - recentWindowSize));
+    }
 
     let allocatedExchanges = [];
     let currentTotalChars = 0;
@@ -284,10 +321,10 @@
       }
     }
 
-    // Third: If slots and budget still remain, pack older complete exchanges
+    // Third: If no summary exists, pack older complete exchanges into remaining slots and budget
     const keptOlder = [];
     const remainingSlots = maxExchanges - keptRecent.length - (summaryExchange ? 1 : 0);
-    if (remainingSlots > 0 && olderCandidates.length > 0) {
+    if (!summaryExchange && remainingSlots > 0 && olderCandidates.length > 0) {
       for (let oIdx = olderCandidates.length - 1; oIdx >= 0; oIdx--) {
         const ex = olderCandidates[oIdx];
         const exLen = ex.prompt.length + ex.response.length;
