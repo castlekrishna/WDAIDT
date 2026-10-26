@@ -333,3 +333,38 @@ test('pipeline_v2: zero runtime calls to http://localhost:8000 when analyzing', 
     assert.ok(!url.includes('127.0.0.1'), `Unexpected 127.0.0.1 request: ${url}`);
   }
 });
+
+test('pipeline_v2 regression: postAnalyze restores mockMode from storage when settingsState in-memory was uninitialized', async () => {
+  const { exports, store } = createV2Sandbox(null, {
+    wdaidt_mock_mode: true,
+    wdaidt_gemini_api_key: ''
+  });
+
+  // Simulate uninitialized in-memory state
+  exports.settingsState.mockMode = false;
+  exports.settingsState.apiKey = '';
+
+  const result = await exports.postAnalyze('What is the capital of France?', 'The capital of France is Paris.', 'req-mock-restore');
+  assert.ok(result);
+  assert.ok(result.analysis);
+  assert.equal(exports.settingsState.mockMode, true);
+});
+
+test('pipeline_v2 regression: closing settings drawer persists apiKeyInput value to state and storage', async () => {
+  const { elements, exports, store } = createV2Sandbox(null, {
+    wdaidt_mock_mode: false,
+    wdaidt_gemini_api_key: ''
+  });
+
+  await exports.initSettings();
+  assert.equal(elements.backendLine.textContent, 'Gemini: API Key required');
+
+  // Value placed in input (e.g. paste without separate input event)
+  elements.apiKeyInput.value = 'AIzaSyPastedWithoutInputEvent';
+  elements.settingsCloseBtn.dispatchEvent('click');
+
+  assert.equal(exports.settingsState.apiKey, 'AIzaSyPastedWithoutInputEvent');
+  assert.equal(store.wdaidt_gemini_api_key, 'AIzaSyPastedWithoutInputEvent');
+  assert.equal(elements.backendLine.textContent, 'Gemini: Ready');
+  assert.ok(elements.statusDot.className.includes('connected'));
+});

@@ -2,6 +2,19 @@
 
 All notable changes to Why Did AI Do That? are documented here. Versions are listed from newest to oldest.
 
+## V2.1.0 — Legacy Config Cleanup & Gemini Integration Hardening
+
+WDAIDT V2.1.0 hardens the direct Gemini API integration and cleans up legacy backend references following the retirement of the local Python service:
+
+- **Model Identifier Normalization**: Fixed the root cause of HTTP 404 errors by stripping leading `models/` prefixes from user-provided or API-enumerated model names before constructing the REST endpoint URL (`/models/{model}:generateContent`), preventing duplicate `/models/models/...` request paths.
+- **Resilient Model Candidate Fallback**: Added `gemini-2.5-flash` and `gemini-2.5-flash-lite` to the candidate fallback hierarchy (`gemini-3.5-flash-lite` -> `gemini-flash-latest` -> `gemini-3.8-flash` -> `gemini-2.5-flash` -> `gemini-2.5-flash-lite`), ensuring graceful fallback across different Google AI Studio tier allocations.
+- **Accurate Auth Error Mapping**: Updated Gemini REST response handling to inspect HTTP 400 responses for `API_KEY_INVALID` payload reasons and error messages, correctly classifying invalid/expired keys as auth errors rather than generic request argument rejections.
+- **Settings Lifecycle & Status Synchronization**: Eliminated premature "Gemini: API Key required" status warnings on startup by ensuring stored settings and keys are retrieved from `chrome.storage.local` before status indicator evaluation.
+- **Settings Input Hardening**: Added `change` event listening and drawer-close persistence to the API key input to reliably save pasted or autofilled keys.
+- **Stale Configuration Cleanup**: Removed obsolete health-check constants and helpers (`HEALTH_PATH`, `wdaidtHealthUrl`) while preserving shared test compatibility constants.
+- **Packaging Verification**: Added explicit packaging instructions for PowerShell and Bash ensuring that distribution ZIP archives contain `manifest.json` directly at the archive root.
+- **Test Suite Expansion**: Added regression tests covering model prefix normalization, HTTP 400 auth error mapping, and asynchronous storage restoration, bringing the automated test suite to 166 passing tests (0 failed, 0 skipped).
+
 ## V2.0.0 — Self-Contained Chrome Extension Release
 
 WDAIDT V2.0.0 converts **Why Did AI Do That?** into a completely self-contained Chrome Manifest V3 extension. Users no longer need to install Python, run a local FastAPI server, or use a terminal. The extension communicates directly with Google's Gemini API using a user-provided API key stored securely in local browser storage, or operates completely offline using built-in Mock Mode.

@@ -51,7 +51,8 @@
     const AnalysisError = validator.AnalysisError || Error;
 
     const base = (cfg.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
-    const url = `${base}/models/${modelCandidate}:generateContent`;
+    const cleanModel = String(modelCandidate || '').trim().replace(/^models\//, '');
+    const url = `${base}/models/${cleanModel}:generateContent`;
 
     const systemInstruction = prompts.composeSystemInstructions
       ? prompts.composeSystemInstructions(params.response_style, params.custom_instructions, params.analysis_depth)
@@ -94,13 +95,29 @@
 
       if (res.status === 400) {
         let errMsg = 'Gemini rejected the request arguments.';
+        let isKeyError = false;
         try {
           const errData = await res.json();
           if (errData?.error?.message) {
-            // Strip any sensitive reflection
             errMsg = errData.error.message.replace(/key=[^&\s]+/gi, 'key=REDACTED');
+            if (
+              /api[\s_-]?key/i.test(errMsg) ||
+              errData?.error?.details?.some?.((d) => d.reason === 'API_KEY_INVALID')
+            ) {
+              isKeyError = true;
+            }
           }
         } catch { /* ignore */ }
+
+        if (isKeyError) {
+          throw new AnalysisError(
+            'API_KEY_INVALID',
+            'Invalid or unauthorized Gemini API key. Please check your key in Settings.',
+            400,
+            null,
+            'auth'
+          );
+        }
         throw new AnalysisError('INVALID_ARGUMENT', errMsg, 400, null, 'api');
       }
 
@@ -232,10 +249,10 @@
     }
 
     // 3. Prepare model candidates (configured model first, then fallbacks)
-    const configuredModel = params.model || cfg.GEMINI_DEFAULT_MODEL || 'gemini-3.5-flash-lite';
+    const configuredModel = String(params.model || cfg.GEMINI_DEFAULT_MODEL || 'gemini-3.5-flash-lite').trim().replace(/^models\//, '');
     const fallbackList = Array.isArray(cfg.GEMINI_FALLBACK_MODELS)
-      ? cfg.GEMINI_FALLBACK_MODELS
-      : ['gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      ? cfg.GEMINI_FALLBACK_MODELS.map((m) => String(m).trim().replace(/^models\//, ''))
+      : ['gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
     const candidates = [configuredModel];
     fallbackList.forEach((m) => {

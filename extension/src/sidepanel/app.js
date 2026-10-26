@@ -1,5 +1,6 @@
-/* WDAIDT side-panel controller (V1.0.0 — Stable Release).
- * Only this layer talks to the backend. Content script only captures.
+/* WDAIDT side-panel controller (V2.1.0).
+ * Coordinates in-extension analysis via Google Gemini API client or offline mock engine.
+ * Content script captures ChatGPT dialogue only (zero network calls in content script).
  * Renders flexible LLM-generated documents with variable block combinations.
  */
 (() => {
@@ -353,11 +354,14 @@
   async function postAnalyze(prompt, response, requestId, context = []) {
     if (!settingsState.apiKey && !settingsState.mockMode && typeof chrome !== 'undefined' && chrome?.storage?.local?.get) {
       try {
-        const storedKey = await chrome.storage.local.get('wdaidt_gemini_api_key');
-        if (storedKey && storedKey.wdaidt_gemini_api_key) {
-          settingsState.apiKey = storedKey.wdaidt_gemini_api_key;
-          updateStatusIndicator();
+        const stored = await chrome.storage.local.get(['wdaidt_gemini_api_key', 'wdaidt_mock_mode']);
+        if (stored && stored.wdaidt_gemini_api_key) {
+          settingsState.apiKey = String(stored.wdaidt_gemini_api_key).trim();
         }
+        if (stored && typeof stored.wdaidt_mock_mode === 'boolean') {
+          settingsState.mockMode = stored.wdaidt_mock_mode;
+        }
+        updateStatusIndicator();
       } catch { /* storage inaccessible */ }
     }
     const cfg = CFG();
@@ -1164,7 +1168,7 @@
         settingsState.contextWindow = 5;
       }
       if (stored && stored.wdaidt_gemini_api_key) {
-        settingsState.apiKey = stored.wdaidt_gemini_api_key;
+        settingsState.apiKey = String(stored.wdaidt_gemini_api_key).trim();
       }
       if (stored && typeof stored.wdaidt_mock_mode === 'boolean') {
         settingsState.mockMode = stored.wdaidt_mock_mode;
@@ -1226,8 +1230,23 @@
     }
 
     if (els.settingsCloseBtn) {
-      els.settingsCloseBtn.addEventListener('click', () => {
+      els.settingsCloseBtn.addEventListener('click', async () => {
         if (!els.settingsCard) return;
+        if (els.apiKeyInput) {
+          const key = els.apiKeyInput.value.trim();
+          if (key !== settingsState.apiKey) {
+            settingsState.apiKey = key;
+            updateApiKeyStatusUI();
+            updateStatusIndicator();
+            try {
+              if (key) {
+                await chrome.storage.local.set({ wdaidt_gemini_api_key: key });
+              } else {
+                await chrome.storage.local.remove('wdaidt_gemini_api_key');
+              }
+            } catch { /* non-fatal */ }
+          }
+        }
         els.settingsCard.hidden = true;
         if (els.settingsToggleBtn) {
           els.settingsToggleBtn.setAttribute('aria-expanded', 'false');
@@ -1279,7 +1298,7 @@
     }
 
     if (els.apiKeyInput) {
-      els.apiKeyInput.addEventListener('input', async () => {
+      const handleApiKeyInput = async () => {
         const key = els.apiKeyInput.value.trim();
         settingsState.apiKey = key;
         updateApiKeyStatusUI();
@@ -1291,7 +1310,10 @@
             await chrome.storage.local.remove('wdaidt_gemini_api_key');
           }
         } catch { /* non-fatal */ }
-      });
+      };
+
+      els.apiKeyInput.addEventListener('input', handleApiKeyInput);
+      els.apiKeyInput.addEventListener('change', handleApiKeyInput);
     }
 
     if (els.apiKeyToggleBtn && els.apiKeyInput) {
@@ -1360,7 +1382,6 @@
   if (els.copyAnalysisBtn) els.copyAnalysisBtn.addEventListener('click', copyAnalysis);
 
   initAccordion();
-  checkBackend();
   initAutoToggle();
   initSettings();
 

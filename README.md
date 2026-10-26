@@ -94,7 +94,7 @@ Download and extract the repository ZIP: [Download WDAIDT ZIP](https://github.co
 2. Turn ON **Developer mode** (toggle in the upper-right corner).
 3. Click **Load unpacked** (button in the upper-left corner).
 4. Select the `extension/` directory inside your cloned or extracted repository.
-5. That's it! **Why Did AI Do That?** is now installed (version 2.0.0).
+5. That's it! **Why Did AI Do That?** is now installed (version 2.1.0).
 
 ---
 
@@ -110,7 +110,7 @@ Download and extract the repository ZIP: [Download WDAIDT ZIP](https://github.co
 6. Click **Why?** to see an instant diagnostic breakdown and a suggested follow-up prompt!
 
 > [!NOTE]
-> **Archived V1 Python Backend**: The original Python/FastAPI local server remains preserved in the `backend/` directory for historical reference and parity testing, but is **no longer required** for normal extension use in V2.0.0. To run the legacy V1 backend, see [V1.0.0 Release Notes](docs/V1.0.0.md).
+> **Historical V1 Python Backend**: The original Python/FastAPI local server has been retired from the active repository and is preserved in repository history under the [v1.0.0 release tag](https://github.com/castlekrishna/WDAIDT/releases/tag/v1.0.0). V2 operates entirely standalone within Google Chrome. For historical V1 architecture and setup instructions, see [V1.0.0 Release Notes](docs/V1.0.0.md).
 
 ---
 
@@ -156,7 +156,7 @@ flowchart TD
 2. **Context Budgeting**: If configured (3, 5, or 10 previous exchanges), preceding turns are extracted in chronological order. Context size budgets (30,000 characters client-side, 40,000 characters acceptance) are enforced by shedding older complete exchanges first.
 3. **In-Browser Pipeline**: The side panel passes conversation text to `prompts.js`, packaging the exchange inside passive XML delimiters (`<CURRENT_INTERACTION>` and `<CONVERSATION_HISTORY>`) and composing the master system prompt with user-selected style and depth guidance.
 4. **Diagnostic Generation**:
-   - In **Live Mode**, `gemini-client.js` sends an authenticated HTTPS request directly to the Google Gemini API (`gemini-3.5-flash-lite`, with automatic fallback to `gemini-flash-latest` and `gemini-3.8-flash`).
+   - In **Live Mode**, `gemini-client.js` sends an authenticated HTTPS request directly to the Google Gemini API (`gemini-3.5-flash-lite`, with automatic candidate fallback to `gemini-flash-latest`, `gemini-3.8-flash`, `gemini-2.5-flash`, and `gemini-2.5-flash-lite`).
    - In **Mock Mode**, `mock-analyzer.js` generates realistic diagnostic findings instantly and deterministically with zero network calls and no API key required.
 5. **Schema Validation & Safe Rendering**: Output is verified against the 9-block `AnalysisDocument` specification in `validator.js`. The side panel renders the document safely using native DOM elements (`textContent`), avoiding any `innerHTML` injection.
 
@@ -164,14 +164,14 @@ flowchart TD
 
 ## Technology Stack
 
-### Chrome Extension (V2.0.0 Standalone Runtime)
+### Chrome Extension (V2.1.0 Standalone Runtime)
 - **Platform**: Chrome Manifest V3
 - **APIs**: Chrome Side Panel API (`chrome.sidePanel`), Chrome Storage API (`chrome.storage.local`), Chrome Scripting & Tabs
 - **Frontend & Pipeline**: Vanilla JavaScript (ES2022), semantic HTML5, modern CSS3 custom properties
 - **Direct AI Integration**: Google Generative Language REST API (`gemini-3.5-flash-lite`) via HTTPS header authentication
 - **Offline Mock Engine**: In-memory deterministic mock analyzer generating valid 9-block documents
 - **Security**: Pure DOM element construction (`textContent`), zero `innerHTML` usage, Content Security Policy compliant
-- **Testing**: Node.js built-in test runner (`node:test`, `node:assert`) — 162 passing automated tests
+- **Testing**: Node.js built-in test runner (`node:test`, `node:assert`) — 166 passing automated tests
 
 ---
 
@@ -197,7 +197,7 @@ WDAIDT/
 │   ├── V2.0.0-MIGRATION-PLAN.md    # V2.0.0 architecture & migration blueprint
 │   └── V2.0.0.md                   # V2.0.0 standalone release technical notes
 ├── extension/
-│   ├── manifest.json               # Manifest V3 configuration (v2.0.0)
+│   ├── manifest.json               # Manifest V3 configuration (v2.1.0)
 │   ├── assets/                     # Extension icons (16px, 48px, 128px)
 │   └── src/
 │       ├── background/
@@ -216,7 +216,7 @@ WDAIDT/
 │           ├── index.html          # Side panel markup & settings drawer
 │           └── styles.css          # Obsidian pitch-black theme styling
 └── tests/
-    └── extension/                  # Node.js automated test suites (162 tests)
+    └── extension/                  # Node.js automated test suites (166 tests)
         ├── auto.test.js            # Auto Analyze debounce & watcher tests
         ├── capture.test.js         # DOM extraction & shadow-root tests
         ├── capture_audit.test.js   # Layout bounds & full-text preservation tests
@@ -235,9 +235,9 @@ WDAIDT/
 
 ---
 
-## Testing
+## Testing & Verification
 
-WDAIDT maintains a comprehensive 162-test automated regression baseline using the built-in Node.js test runner:
+WDAIDT maintains a comprehensive 166-test automated regression baseline using the built-in Node.js test runner:
 
 ```bash
 node --test tests/extension/*.test.js
@@ -252,14 +252,47 @@ node --test tests/extension/*.test.js
 - **Offline Mock Engine**: Zero-network deterministic mock generation matching all document types.
 - **Settings & UI State**: Accordion drawers, status indicator synchronization, `chrome.storage.local` persistence.
 
-- **Observed Verification Result**: **162 passed**, 0 failed, 0 skipped (~1.3 seconds runtime).
+- **Observed Automated Test Result**: **166 passed**, 0 failed, 0 skipped (~1.3 seconds runtime).
+- **Live Mode Verification Status**: Automated tests execute using offline mock fixtures and mock network fetch functions. Live Gemini mode requires a user-supplied API key at runtime and was not verified against live external Google API endpoints during automated runs.
+
+---
+
+## Packaging the Extension for Distribution
+
+To package the extension into a distributable archive where `manifest.json` is located directly at the root of the ZIP file (not nested inside an `extension/` subfolder):
+
+### Windows (PowerShell)
+```powershell
+Compress-Archive -Path extension\* -DestinationPath WDAIDT-v2.1.0-chrome-extension.zip -Force
+```
+
+### macOS / Linux (Bash)
+```bash
+(cd extension && zip -r ../WDAIDT-v2.1.0-chrome-extension.zip .)
+```
+
+### Verifying Package Contents
+Ensure that `manifest.json` is at the archive root:
+```bash
+# Verify archive listing
+tar -tf WDAIDT-v2.1.0-chrome-extension.zip | head -n 5
+# Or unzip -l WDAIDT-v2.1.0-chrome-extension.zip
+```
+Expected output displays `manifest.json` at root level:
+```text
+manifest.json
+assets/icon16.png
+assets/icon48.png
+assets/icon128.png
+src/...
+```
 
 ---
 
 ## Privacy and Security
 
 - **Ephemeral In-Memory Processing**: Conversation text is processed exclusively in memory to construct analysis prompts. Data is **never stored** in external databases, vector indexes, or server disks.
-- **Secure Local Storage**: API keys and preferences are stored strictly on the user's device in Chrome's sandboxed `chrome.storage.local`.
+- **Browser Profile Local Storage**: API keys and preferences are saved locally on the user's device in `chrome.storage.local`. While isolated from web page scripts by Chrome extension security boundaries, local storage is accessible to the local user and browser profile on the host machine. Users should handle API keys with standard credential care and restrict key scopes in Google AI Studio.
 - **Credential Protection**: When calling the Gemini API, the key is transmitted via the secure `x-goog-api-key` HTTPS header. It is never included in URLs, query strings, or error messages.
 - **Zero Tracking & Telemetry**: WDAIDT contains zero analytics, tracking beacons, or third-party advertising scripts.
 - **Passive Data Demarcation**: Untrusted user dialogue is isolated inside `<CURRENT_INTERACTION>` and `<CONVERSATION_HISTORY>` XML delimiters within the analysis prompt, preventing user-submitted conversation text from overriding system instructions.
@@ -312,7 +345,7 @@ Distributed under the [MIT License](LICENSE). Copyright (c) 2026 Krishna Kumar, 
 - [V2.0.0 Technical Notes](docs/V2.0.0.md): Standalone Manifest V3 Chrome extension, direct Gemini REST integration, and zero-network Mock Mode.
 - [V2.0.0 Migration Plan](docs/V2.0.0-MIGRATION-PLAN.md): Architectural roadmap and technical specifications for the V2 pure-JavaScript migration.
 - [Submission Audit & Readiness Report](docs/SUBMISSION_READINESS.md): Hackathon compliance matrix, official rule verification, and release evaluation.
-- [Changelog (V0.1 – V2.0.0)](docs/CHANGELOG.md): Complete release history from the initial foundation through stable release.
+- [Changelog (V0.1 – V2.1.0)](docs/CHANGELOG.md): Complete release history from the initial foundation through stable release.
 - [V1.0.0 Technical Notes](docs/V1.0.0.md): Final stabilization, verification, and release notes.
 - [V0.9.3 Technical Notes](docs/V0.9.3.md): Final Skill Pack alignment audit, takeaway architecture map, and compliance verification.
 - [V0.9.2 Technical Notes](docs/V0.9.2.md): Submission readiness, hackathon compliance audit, and planning artifact synchronization.

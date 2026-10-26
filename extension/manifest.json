@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Why Did AI Do That?",
   "short_name": "WDAIDT",
-  "version": "2.0.0",
-  "description": "WDAIDT V2.0.0: Self-contained Chrome extension providing real-time, evidence-based diagnostic explanations and follow-up prompts for ChatGPT responses.",
+  "version": "2.1.0",
+  "description": "WDAIDT V2.1.0: Self-contained Chrome extension providing real-time, evidence-based diagnostic explanations and follow-up prompts for ChatGPT responses.",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "assets/icon16.png",

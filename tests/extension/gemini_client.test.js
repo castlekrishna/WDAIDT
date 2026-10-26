@@ -184,14 +184,16 @@ test('gemini_client: callGemini surfaces clear message when all model candidates
   const mockFetch = createMockFetch([
     { status: 404, body: { error: { message: 'Model 1 retired' } } },
     { status: 404, body: { error: { message: 'Model 2 retired' } } },
-    { status: 404, body: { error: { message: 'Model 3 retired' } } }
+    { status: 404, body: { error: { message: 'Model 3 retired' } } },
+    { status: 404, body: { error: { message: 'Model 4 retired' } } },
+    { status: 404, body: { error: { message: 'Model 5 retired' } } }
   ]);
 
   await assert.rejects(
     () => callGemini({ prompt: 'Q', response: 'A', api_key: 'test-key' }, mockFetch),
     (err) => err instanceof AnalysisError && err.statusCode === 404 && err.message.includes('configured Gemini model is unavailable or retired')
   );
-  assert.equal(mockFetch.getCallCount(), 3);
+  assert.equal(mockFetch.getCallCount(), 5);
 });
 
 test('gemini_client: callGemini retries once on malformed JSON then succeeds', async () => {
@@ -279,4 +281,52 @@ test('gemini_client: maskKey masks keys safely', () => {
   assert.equal(maskKey(null), '');
   assert.equal(maskKey('short'), '••••••••');
   assert.equal(maskKey('AIzaSyD-1234567890abcdef'), 'AIza••••cdef');
+});
+
+test('gemini_client regression: callGemini strips models/ prefix from candidate models preventing duplicate /models/models/ 404 URL', async () => {
+  const dummyDoc = {
+    title: 'Model Prefix Normalization',
+    blocks: [{ type: 'divider' }]
+  };
+  const mockFetch = createMockFetch([
+    {
+      status: 200,
+      body: {
+        candidates: [{ content: { parts: [{ text: JSON.stringify(dummyDoc) }] } }]
+      }
+    }
+  ]);
+
+  const res = await callGemini({
+    prompt: 'Question with model prefix',
+    response: 'Answer',
+    model: 'models/gemini-3.5-flash-lite',
+    api_key: 'test-key'
+  }, mockFetch);
+
+  assert.equal(res.analysis.title, 'Model Prefix Normalization');
+  const calledUrl = mockFetch.getCalls()[0].url;
+  assert.ok(!calledUrl.includes('/models/models/'), `URL must not contain duplicate /models/models/: ${calledUrl}`);
+  assert.ok(calledUrl.endsWith('/models/gemini-3.5-flash-lite:generateContent'));
+});
+
+test('gemini_client regression: callGemini maps HTTP 400 with API_KEY_INVALID to API_KEY_INVALID error code', async () => {
+  const mockFetch = createMockFetch([
+    {
+      status: 400,
+      body: {
+        error: {
+          code: 400,
+          message: 'API key not valid. Please pass a valid API key.',
+          status: 'INVALID_ARGUMENT',
+          details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'API_KEY_INVALID' }]
+        }
+      }
+    }
+  ]);
+
+  await assert.rejects(
+    () => callGemini({ prompt: 'Q', response: 'A', api_key: 'bad-key-returning-400' }, mockFetch),
+    (err) => err instanceof AnalysisError && err.code === 'API_KEY_INVALID' && err.stage === 'auth'
+  );
 });

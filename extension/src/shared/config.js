@@ -1,13 +1,13 @@
-/* Single source of truth for backend connection + API-agreement limits.
- * Per API agreement: only the side panel / controller calls the backend.
- * The content script never calls this.
+/* Single source of truth for extension configuration and API agreement limits.
+ * WDAIDT V2.0.1 operates as a self-contained extension with direct Gemini API integration.
  */
 
 const WDAIDT_CONFIG = Object.freeze({
+  // Legacy backend connection constants preserved for backward-compatible test fixtures
   BACKEND_BASE_URL: 'http://localhost:8000',
   ANALYZE_PATH: '/analyze',
-  HEALTH_PATH: '/health',
-  // Extension -> backend timeout (agreement: 20s). Backend -> Gemini is 15s.
+
+  // Request timeout: 20s
   FETCH_TIMEOUT_MS: 20000,
   // API agreement size limits: extension trims before sending.
   MAX_PROMPT_CHARS: 8000,
@@ -46,13 +46,15 @@ const WDAIDT_CONFIG = Object.freeze({
   MAX_CONTEXT_EXCHANGES: 10,
   MAX_CONTEXT_TOTAL_CHARS: 30000,
 
-  // V2.0 Gemini API configuration
+  // V2.0+ Gemini API configuration
   GEMINI_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
   GEMINI_DEFAULT_MODEL: 'gemini-3.5-flash-lite',
   GEMINI_FALLBACK_MODELS: [
     'gemini-3.5-flash-lite',
     'gemini-flash-latest',
-    'gemini-3.8-flash'
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite'
   ],
   STORAGE_KEYS: Object.freeze({
     API_KEY: 'wdaidt_gemini_api_key',
@@ -67,7 +69,7 @@ const WDAIDT_CONFIG = Object.freeze({
 
 function wdaidtGeminiUrl(model, baseUrl) {
   const base = (baseUrl || WDAIDT_CONFIG.GEMINI_BASE_URL).replace(/\/+$/, '');
-  const m = model || WDAIDT_CONFIG.GEMINI_DEFAULT_MODEL;
+  const m = String(model || WDAIDT_CONFIG.GEMINI_DEFAULT_MODEL || '').trim().replace(/^models\//, '');
   return `${base}/models/${m}:generateContent`;
 }
 
@@ -76,24 +78,17 @@ function wdaidtAnalyzeUrl(baseUrl) {
   return base + WDAIDT_CONFIG.ANALYZE_PATH;
 }
 
-function wdaidtHealthUrl(baseUrl) {
-  const base = (baseUrl || WDAIDT_CONFIG.BACKEND_BASE_URL).replace(/\/+$/, '');
-  return base + WDAIDT_CONFIG.HEALTH_PATH;
-}
-
 if (typeof self !== 'undefined') {
   self.WDAIDT_CONFIG = WDAIDT_CONFIG;
   self.wdaidtAnalyzeUrl = wdaidtAnalyzeUrl;
-  self.wdaidtHealthUrl = wdaidtHealthUrl;
   self.wdaidtGeminiUrl = wdaidtGeminiUrl;
 }
 if (typeof globalThis !== 'undefined') {
   globalThis.WDAIDT_CONFIG = WDAIDT_CONFIG;
   globalThis.wdaidtAnalyzeUrl = wdaidtAnalyzeUrl;
-  globalThis.wdaidtHealthUrl = wdaidtHealthUrl;
   globalThis.wdaidtGeminiUrl = wdaidtGeminiUrl;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { WDAIDT_CONFIG, wdaidtAnalyzeUrl, wdaidtHealthUrl, wdaidtGeminiUrl };
+  module.exports = { WDAIDT_CONFIG, wdaidtAnalyzeUrl, wdaidtGeminiUrl };
 }
