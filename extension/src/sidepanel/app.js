@@ -221,6 +221,15 @@
     }
   }
 
+  async function sendTabMessage(tabId, message) {
+    try {
+      const res = await chrome.tabs.sendMessage(tabId, message);
+      return { sent: true, res };
+    } catch (e) {
+      return { sent: false, error: e };
+    }
+  }
+
   async function ensureContentScript(tabId) {
     try {
       if (chrome && chrome.scripting && chrome.scripting.executeScript) {
@@ -229,6 +238,8 @@
           files: [
             'src/shared/messages.js',
             'src/shared/db.js',
+            'src/shared/context_builder.js',
+            'src/shared/retention.js',
             'src/content/conversation_capture.js',
             'src/content/chatgpt.js'
           ]
@@ -353,7 +364,7 @@
       responseLen: response.length
     });
     const history = Array.isArray(res.history) ? res.history : [];
-    return { prompt, response, meta, history };
+    return { prompt, response, meta, history, tabId: tab.id };
   }
 
   async function postAnalyze(prompt, response, requestId, context = []) {
@@ -791,6 +802,32 @@
     if (els.skeletonCard) els.skeletonCard.hidden = true;
   }
 
+  async function resolveEnrichedContext(tabId, normPrompt, normResponse, fallbackHistory, maxEx, maxContextChars) {
+    let filtered = filterContextExchanges(fallbackHistory, maxEx, maxContextChars);
+    if (!tabId || maxEx <= 0) return filtered;
+    try {
+      const type = (MSGS().BUILD_CONTEXT) || 'WDAIDT_BUILD_CONTEXT';
+      const attempt = await sendTabMessage(tabId, {
+        type,
+        payload: {
+          maxExchanges: maxEx,
+          maxTotalChars: maxContextChars,
+          currentExchange: { prompt: normPrompt, response: normResponse },
+          fallbackHistory
+        }
+      });
+      if (attempt.sent && attempt.res && attempt.res.ok && attempt.res.contextResult) {
+        const exchanges = attempt.res.contextResult.exchanges;
+        if (Array.isArray(exchanges) && exchanges.length > 0) {
+          return exchanges;
+        }
+      }
+    } catch {
+      /* non-fatal fallback */
+    }
+    return filtered;
+  }
+
   async function runWhy() {
     setButtonLoading(true);
     if (els.retryBtn) els.retryBtn.hidden = true;
@@ -806,7 +843,14 @@
       const normResponse = trimForBackend(cap.response, maxR);
       const maxEx = parseValidContextWindow(settingsState.contextWindow);
       const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
-      const filteredContext = filterContextExchanges(cap.history, maxEx, maxContextChars);
+      const filteredContext = await resolveEnrichedContext(
+        cap.tabId,
+        normPrompt,
+        normResponse,
+        cap.history,
+        maxEx,
+        maxContextChars
+      );
       const normalizedCap = {
         prompt: normPrompt,
         response: normResponse,
@@ -907,7 +951,15 @@
 
       const maxEx = parseValidContextWindow(settingsState.contextWindow);
       const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
-      const filteredContext = filterContextExchanges(history, maxEx, maxContextChars);
+      const activeTab = await getActiveTab();
+      const filteredContext = await resolveEnrichedContext(
+        activeTab && activeTab.id,
+        normPrompt,
+        normResponse,
+        history,
+        maxEx,
+        maxContextChars
+      );
       const cap = { prompt: normPrompt, response: normResponse, context: filteredContext };
       lastCapture = cap;
 

@@ -1018,7 +1018,55 @@
       }
       return true;
     }
+
+    if (message.type === types.BUILD_CONTEXT || message.type === 'WDAIDT_BUILD_CONTEXT') {
+      handleBuildContext(message.payload || {})
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
+
+    if (message.type === types.RUN_RETENTION || message.type === 'WDAIDT_RUN_RETENTION') {
+      handleRunRetention(message.payload || {})
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
     return false;
+  }
+
+  async function handleBuildContext(payload) {
+    const builder = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_CONTEXT_BUILDER) || null;
+    if (!builder || typeof builder.buildConversationContext !== 'function') {
+      return { ok: false, error: 'Context builder module not available.' };
+    }
+    const cap = getV3Capture();
+    const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+    const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+    const activeExtId = cap && typeof cap.getActiveExternalChatId === 'function' ? cap.getActiveExternalChatId() : null;
+
+    const contextResult = await builder.buildConversationContext(storage, {
+      ...payload,
+      conversationId: (payload && payload.conversationId) || activeConvId,
+      externalChatId: (payload && payload.externalChatId) || activeExtId
+    });
+    return { ok: true, contextResult };
+  }
+
+  async function handleRunRetention(payload) {
+    const retention = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_RETENTION) || null;
+    if (!retention || typeof retention.runStorageRetention !== 'function') {
+      return { ok: false, error: 'Retention module not available.' };
+    }
+    const cap = getV3Capture();
+    const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+    const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+
+    const report = await retention.runStorageRetention(storage, {
+      ...payload,
+      activeConversationId: (payload && payload.activeConversationId) || activeConvId
+    });
+    return { ok: true, report };
   }
 
   // ── Auto Analyze (V0.3): stream-completion trigger + debounce ──────────
@@ -1198,6 +1246,8 @@
       getLatest: getLatestInteraction,
       pairExchanges,
       getConversationCapture: getV3Capture,
+      buildContext: handleBuildContext,
+      runRetention: handleRunRetention,
     });
   } catch {
     // non-fatal

@@ -46,6 +46,10 @@ const WDAIDT_CONFIG = Object.freeze({
   MAX_CONTEXT_EXCHANGES: 10,
   MAX_CONTEXT_TOTAL_CHARS: 30000,
 
+  // V3.0+ Retention and Storage Budget defaults
+  DEFAULT_RETENTION_DAYS: 90,
+  DEFAULT_STORAGE_BUDGET_MB: 100,
+
   // V2.0+ Gemini API configuration
   GEMINI_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
   GEMINI_DEFAULT_MODEL: 'gemini-3.5-flash-lite',
@@ -63,7 +67,9 @@ const WDAIDT_CONFIG = Object.freeze({
     RESPONSE_STYLE: 'wdaidt_response_style',
     CUSTOM_INSTRUCTIONS: 'wdaidt_custom_instructions',
     ANALYSIS_DEPTH: 'wdaidt_analysis_depth',
-    CONTEXT_WINDOW: 'wdaidt_context_window'
+    CONTEXT_WINDOW: 'wdaidt_context_window',
+    RETENTION_DAYS: 'wdaidt_retention_days',
+    STORAGE_BUDGET_MB: 'wdaidt_storage_budget_mb'
   })
 });
 
