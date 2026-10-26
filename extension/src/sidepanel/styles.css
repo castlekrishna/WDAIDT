@@ -1265,3 +1265,93 @@ footer a:hover {
   white-space: pre-wrap;
   user-select: all;
 }
+
+/* ==========================================================================
+   V3.0 Settings Sections & Memory Controls
+   ========================================================================== */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.settings-section-title {
+  font: 600 var(--text-xs) var(--font-ui);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.privacy-notice {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+  border-left: 2px solid var(--border-strong);
+}
+
+.memory-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: var(--text-xs) var(--font-ui);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  width: fit-content;
+}
+
+.confirm-box {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.confirm-text {
+  font: var(--text-xs)/1.4 var(--font-ui);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.btn-danger {
+  color: var(--status-error) !important;
+  border-color: var(--border-default) !important;
+}
+
+.btn-danger:hover {
+  border-color: var(--status-error) !important;
+  background: rgba(248, 113, 113, 0.1) !important;
+}
+
+.primary.btn-danger {
+  background: var(--status-error) !important;
+  color: #000000 !important;
+  border: none !important;
+  font-weight: 600;
+}
+
+.primary.btn-danger:hover {
+  opacity: 0.9;
+}
+
+.status-msg {
+  color: var(--status-success);
+  font-weight: 500;
+}

@@ -17,7 +17,13 @@ const WDAIDT_MESSAGES = Object.freeze({
   // exchange settled after streaming. Payload: { prompt, response, url }.
   AUTO_ANALYZE_TRIGGER: 'WDAIDT_AUTO_ANALYZE_TRIGGER',
   ANALYSIS_RESULT: 'WDAIDT_ANALYSIS_RESULT',
-  ANALYSIS_ERROR: 'WDAIDT_ANALYSIS_ERROR'
+  ANALYSIS_ERROR: 'WDAIDT_ANALYSIS_ERROR',
+  // V3.0+ Context Builder & Storage Retention operations
+  BUILD_CONTEXT: 'WDAIDT_BUILD_CONTEXT',
+  RUN_RETENTION: 'WDAIDT_RUN_RETENTION',
+  SUMMARIZE_CONVERSATION: 'WDAIDT_SUMMARIZE_CONVERSATION',
+  CLEAR_MEMORY: 'WDAIDT_CLEAR_MEMORY',
+  GET_MEMORY_STATS: 'WDAIDT_GET_MEMORY_STATS'
 });
 
 // Stale-result guard: drop a backend response whose echoed request_id no

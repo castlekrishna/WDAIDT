@@ -33,7 +33,15 @@
   "content_scripts": [
     {
       "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
-      "js": ["src/shared/messages.js", "src/content/chatgpt.js"],
+      "js": [
+        "src/shared/messages.js",
+        "src/shared/db.js",
+        "src/shared/context_builder.js",
+        "src/shared/retention.js",
+        "src/shared/summarizer.js",
+        "src/content/conversation_capture.js",
+        "src/content/chatgpt.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }

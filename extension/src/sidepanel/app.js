@@ -17,7 +17,10 @@
     'settingsToggleBtn', 'settingsCloseBtn', 'settingsCard',
     'responseStyleSelect', 'customInstructionsGroup', 'customInstructionsInput',
     'analysisDepthSelect', 'contextWindowSelect', 'captureContextBadge', 'documentTitle', 'documentContainer',
-    'apiKeyInput', 'apiKeyToggleBtn', 'apiKeyClearBtn', 'apiKeyStatus', 'mockModeToggle'
+    'apiKeyInput', 'apiKeyToggleBtn', 'apiKeyClearBtn', 'apiKeyStatus', 'mockModeToggle',
+    'memoryEnabledToggle', 'memoryStatusDot', 'memoryStatusText', 'retentionDaysSelect', 'storageBudgetSelect',
+    'memoryUsageText', 'refreshMemoryStatsBtn', 'clearMemoryBtn', 'clearMemoryConfirmGroup',
+    'confirmClearMemoryBtn', 'cancelClearMemoryBtn', 'clearMemoryStatus', 'settingsCopyDiagBtn', 'settingsDiagNotice'
   ].forEach((id) => { els[id] = $(id); });
 
   const CFG = () => globalThis.WDAIDT_CONFIG || {};
@@ -27,14 +30,17 @@
   let lastDiag = null; // diagnostics payload for the Copy diagnostics button
   let lastAnalysis = null; // parsed analysis result for Copy action
 
-  // V0.6 In-memory settings state
+  // V3.0 In-memory settings state
   const settingsState = {
     responseStyle: 'Friendly and conversational',
     customInstructions: '',
     analysisDepth: 'Brief',
     contextWindow: 5,
     apiKey: '',
-    mockMode: false
+    mockMode: false,
+    memoryEnabled: true,
+    retentionDays: 90,
+    storageBudgetMb: 100
   };
 
   function fpSummary(fp) {
@@ -221,12 +227,29 @@
     }
   }
 
+  async function sendTabMessage(tabId, message) {
+    try {
+      const res = await chrome.tabs.sendMessage(tabId, message);
+      return { sent: true, res };
+    } catch (e) {
+      return { sent: false, error: e };
+    }
+  }
+
   async function ensureContentScript(tabId) {
     try {
       if (chrome && chrome.scripting && chrome.scripting.executeScript) {
         await chrome.scripting.executeScript({
           target: { tabId },
-          files: ['src/shared/messages.js', 'src/content/chatgpt.js']
+          files: [
+            'src/shared/messages.js',
+            'src/shared/db.js',
+            'src/shared/context_builder.js',
+            'src/shared/retention.js',
+            'src/shared/summarizer.js',
+            'src/content/conversation_capture.js',
+            'src/content/chatgpt.js'
+          ]
         });
         await new Promise((r) => setTimeout(r, 300));
         return true;
@@ -348,7 +371,7 @@
       responseLen: response.length
     });
     const history = Array.isArray(res.history) ? res.history : [];
-    return { prompt, response, meta, history };
+    return { prompt, response, meta, history, tabId: tab.id };
   }
 
   async function postAnalyze(prompt, response, requestId, context = []) {
@@ -786,6 +809,33 @@
     if (els.skeletonCard) els.skeletonCard.hidden = true;
   }
 
+  async function resolveEnrichedContext(tabId, normPrompt, normResponse, fallbackHistory, maxEx, maxContextChars) {
+    let filtered = filterContextExchanges(fallbackHistory, maxEx, maxContextChars);
+    if (!tabId || maxEx <= 0 || !settingsState.memoryEnabled) return filtered;
+    try {
+      const type = (MSGS().BUILD_CONTEXT) || 'WDAIDT_BUILD_CONTEXT';
+      const attempt = await sendTabMessage(tabId, {
+        type,
+        payload: {
+          maxExchanges: maxEx,
+          maxTotalChars: maxContextChars,
+          memoryEnabled: settingsState.memoryEnabled,
+          currentExchange: { prompt: normPrompt, response: normResponse },
+          fallbackHistory
+        }
+      });
+      if (attempt.sent && attempt.res && attempt.res.ok && attempt.res.contextResult) {
+        const exchanges = attempt.res.contextResult.exchanges;
+        if (Array.isArray(exchanges) && exchanges.length > 0) {
+          return exchanges;
+        }
+      }
+    } catch {
+      /* non-fatal fallback */
+    }
+    return filtered;
+  }
+
   async function runWhy() {
     setButtonLoading(true);
     if (els.retryBtn) els.retryBtn.hidden = true;
@@ -801,7 +851,14 @@
       const normResponse = trimForBackend(cap.response, maxR);
       const maxEx = parseValidContextWindow(settingsState.contextWindow);
       const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
-      const filteredContext = filterContextExchanges(cap.history, maxEx, maxContextChars);
+      const filteredContext = await resolveEnrichedContext(
+        cap.tabId,
+        normPrompt,
+        normResponse,
+        cap.history,
+        maxEx,
+        maxContextChars
+      );
       const normalizedCap = {
         prompt: normPrompt,
         response: normResponse,
@@ -821,6 +878,7 @@
       const requestId = newRequestId();
       latestRequestId = requestId;
       await analyzeCapture(normalizedCap, requestId, filteredContext);
+      maybeTriggerSummarization(cap.tabId);
     } catch (e) {
       if (e && e.stage === 'capture') {
         logEvent('capture_error', { code: (e && e.code) || 'UNKNOWN' });
@@ -880,12 +938,36 @@
   }
 
 
+  async function maybeTriggerSummarization(tabId) {
+    if (!settingsState.memoryEnabled) return;
+    try {
+      let targetId = tabId;
+      if (!targetId) {
+        const tab = await getActiveTab();
+        targetId = tab && tab.id;
+      }
+      if (!targetId || typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.sendMessage) return;
+      const types = MSGS();
+      const type = types.SUMMARIZE_CONVERSATION || 'WDAIDT_SUMMARIZE_CONVERSATION';
+      chrome.tabs.sendMessage(targetId, {
+        type,
+        payload: {
+          apiKey: settingsState.geminiApiKey || undefined,
+          model: settingsState.geminiModel || undefined,
+          mockMode: settingsState.mockMode
+        }
+      }).catch(() => {});
+    } catch {
+      /* non-fatal background trigger */
+    }
+  }
+
   function autoHash(prompt, response) {
     return `${(prompt || '').length}:${(response || '').length}:` +
       `${(prompt || '').slice(-120)}|${(response || '').slice(-120)}`;
   }
 
-  async function runAuto(prompt, response, history = []) {
+  async function runAuto(prompt, response, history = [], tabId = null) {
     if (!els.autoToggle || !els.autoToggle.checked) return;
     const h = autoHash(prompt, response);
     if (h === lastAutoHash) return;
@@ -902,7 +984,16 @@
 
       const maxEx = parseValidContextWindow(settingsState.contextWindow);
       const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
-      const filteredContext = filterContextExchanges(history, maxEx, maxContextChars);
+      const activeTab = tabId ? { id: tabId } : await getActiveTab();
+      const targetTabId = activeTab && activeTab.id;
+      const filteredContext = await resolveEnrichedContext(
+        targetTabId,
+        normPrompt,
+        normResponse,
+        history,
+        maxEx,
+        maxContextChars
+      );
       const cap = { prompt: normPrompt, response: normResponse, context: filteredContext };
       lastCapture = cap;
 
@@ -917,13 +1008,14 @@
       const requestId = newRequestId();
       latestRequestId = requestId;
       await analyzeCapture(cap, requestId, filteredContext);
+      maybeTriggerSummarization(targetTabId);
     } catch (e) {
       showError((e && e.message) || 'Analysis failed. Please try again.');
       setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
     }
   }
 
-  function onRuntimeMessage(message) {
+  function onRuntimeMessage(message, sender) {
     if (!message || typeof message.type !== 'string') return;
     const types = MSGS();
     if (message.type !== types.AUTO_ANALYZE_TRIGGER &&
@@ -933,10 +1025,11 @@
     } catch {
       /* ignore */
     }
+    const senderTabId = (sender && sender.tab && sender.tab.id) || null;
     try {
       autoTimer = setTimeout(() => {
         autoTimer = null;
-        runAuto(message.prompt, message.response, message.history || []);
+        runAuto(message.prompt, message.response, message.history || [], senderTabId);
       }, 500);
     } catch {
       /* timers unavailable */
@@ -1151,7 +1244,10 @@
         'wdaidt_analysis_depth',
         'wdaidt_context_window',
         'wdaidt_gemini_api_key',
-        'wdaidt_mock_mode'
+        'wdaidt_mock_mode',
+        'wdaidt_memory_enabled',
+        'wdaidt_retention_days',
+        'wdaidt_storage_budget_mb'
       ]);
       if (stored.wdaidt_response_style) {
         settingsState.responseStyle = stored.wdaidt_response_style;
@@ -1172,6 +1268,15 @@
       }
       if (stored && typeof stored.wdaidt_mock_mode === 'boolean') {
         settingsState.mockMode = stored.wdaidt_mock_mode;
+      }
+      if (stored && typeof stored.wdaidt_memory_enabled === 'boolean') {
+        settingsState.memoryEnabled = stored.wdaidt_memory_enabled;
+      }
+      if (stored && stored.wdaidt_retention_days != null) {
+        settingsState.retentionDays = parseInt(stored.wdaidt_retention_days, 10) || 90;
+      }
+      if (stored && stored.wdaidt_storage_budget_mb != null) {
+        settingsState.storageBudgetMb = parseInt(stored.wdaidt_storage_budget_mb, 10) || 100;
       }
     } catch {
       /* fallback to defaults */
@@ -1226,6 +1331,9 @@
         const willShow = els.settingsCard.hidden;
         els.settingsCard.hidden = !willShow;
         els.settingsToggleBtn.setAttribute('aria-expanded', String(willShow));
+        if (willShow) {
+          refreshMemoryUI().catch(() => {});
+        }
       });
     }
 
@@ -1347,6 +1455,204 @@
       });
     }
 
+    // ── V3.0 Conversation Memory UI & Operations ────────────────────────────
+    async function refreshMemoryUI() {
+      if (els.memoryEnabledToggle) {
+        els.memoryEnabledToggle.checked = !!settingsState.memoryEnabled;
+      }
+      if (els.retentionDaysSelect) {
+        els.retentionDaysSelect.value = String(settingsState.retentionDays);
+      }
+      if (els.storageBudgetSelect) {
+        els.storageBudgetSelect.value = String(settingsState.storageBudgetMb);
+      }
+
+      if (!settingsState.memoryEnabled) {
+        if (els.memoryStatusDot) {
+          els.memoryStatusDot.className = 'status-dot offline';
+        }
+        if (els.memoryStatusText) {
+          els.memoryStatusText.textContent = 'Memory Disabled';
+        }
+        if (els.memoryUsageText) {
+          els.memoryUsageText.textContent = 'Persistent indexing paused';
+        }
+        return;
+      }
+
+      if (els.memoryStatusDot) {
+        els.memoryStatusDot.className = 'status-dot online';
+      }
+      if (els.memoryStatusText) {
+        els.memoryStatusText.textContent = 'Memory Active (Ready)';
+      }
+
+      try {
+        let stats = null;
+        const tab = await getActiveTab();
+        if (tab && tab.id) {
+          const type = (MSGS().GET_MEMORY_STATS) || 'WDAIDT_GET_MEMORY_STATS';
+          const resp = await sendTabMessage(tab.id, { type });
+          if (resp && resp.sent && resp.res && resp.res.ok) {
+            stats = resp.res;
+          }
+        }
+
+        if (!stats && typeof globalThis.WDAIDT_DB !== 'undefined') {
+          try {
+            const engine = globalThis.WDAIDT_DB.createStorageEngine();
+            const acc = await engine.getStorageAccounting();
+            stats = { accounting: acc };
+          } catch { /* ignore */ }
+        }
+
+        if (stats && stats.accounting) {
+          const acc = stats.accounting;
+          const convs = acc.conversationCount || 0;
+          const msgs = acc.totalMessageCount || 0;
+          const bytes = acc.estimatedStorageBytes || 0;
+          const kb = (bytes / 1024).toFixed(1);
+          if (els.memoryUsageText) {
+            els.memoryUsageText.textContent = `Stored: ${convs} conversation${convs === 1 ? '' : 's'}, ${msgs} message${msgs === 1 ? '' : 's'} (~${kb} KB)`;
+          }
+          if (stats.hasActiveHistory) {
+            if (els.memoryStatusText) {
+              els.memoryStatusText.textContent = 'Memory Active (Current thread indexed)';
+            }
+          }
+        } else {
+          if (els.memoryUsageText) {
+            els.memoryUsageText.textContent = 'Stored: 0 conversations, 0 messages (~0 KB)';
+          }
+        }
+      } catch {
+        if (els.memoryUsageText) {
+          els.memoryUsageText.textContent = 'Stored: 0 conversations (~0 KB)';
+        }
+      }
+    }
+
+    refreshMemoryUI().catch(() => {});
+
+    if (els.memoryEnabledToggle) {
+      els.memoryEnabledToggle.addEventListener('change', async () => {
+        const enabled = !!els.memoryEnabledToggle.checked;
+        settingsState.memoryEnabled = enabled;
+        try {
+          await chrome.storage.local.set({ wdaidt_memory_enabled: enabled });
+        } catch { /* non-fatal */ }
+        await refreshMemoryUI();
+      });
+    }
+
+    if (els.retentionDaysSelect) {
+      els.retentionDaysSelect.addEventListener('change', async () => {
+        const days = parseInt(els.retentionDaysSelect.value, 10) || 90;
+        settingsState.retentionDays = days;
+        try {
+          await chrome.storage.local.set({ wdaidt_retention_days: days });
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    if (els.storageBudgetSelect) {
+      els.storageBudgetSelect.addEventListener('change', async () => {
+        const mb = parseInt(els.storageBudgetSelect.value, 10) || 100;
+        settingsState.storageBudgetMb = mb;
+        try {
+          await chrome.storage.local.set({ wdaidt_storage_budget_mb: mb });
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    if (els.refreshMemoryStatsBtn) {
+      els.refreshMemoryStatsBtn.addEventListener('click', async () => {
+        await refreshMemoryUI();
+      });
+    }
+
+    if (els.clearMemoryBtn) {
+      els.clearMemoryBtn.addEventListener('click', () => {
+        if (els.clearMemoryConfirmGroup) els.clearMemoryConfirmGroup.hidden = false;
+        if (els.clearMemoryStatus) els.clearMemoryStatus.hidden = true;
+      });
+    }
+
+    if (els.cancelClearMemoryBtn) {
+      els.cancelClearMemoryBtn.addEventListener('click', () => {
+        if (els.clearMemoryConfirmGroup) els.clearMemoryConfirmGroup.hidden = true;
+      });
+    }
+
+    if (els.confirmClearMemoryBtn) {
+      els.confirmClearMemoryBtn.addEventListener('click', async () => {
+        if (els.clearMemoryConfirmGroup) els.clearMemoryConfirmGroup.hidden = true;
+        if (els.clearMemoryStatus) {
+          els.clearMemoryStatus.hidden = false;
+          els.clearMemoryStatus.textContent = 'Clearing memory…';
+        }
+
+        try {
+          const tab = await getActiveTab();
+          if (tab && tab.id) {
+            const type = (MSGS().CLEAR_MEMORY) || 'WDAIDT_CLEAR_MEMORY';
+            await sendTabMessage(tab.id, { type });
+          }
+
+          if (typeof globalThis.WDAIDT_DB !== 'undefined') {
+            try {
+              const engine = globalThis.WDAIDT_DB.createStorageEngine();
+              await engine.deleteDatabase();
+            } catch { /* non-fatal */ }
+          }
+
+          if (els.clearMemoryStatus) {
+            els.clearMemoryStatus.textContent = 'All conversation memory cleared successfully.';
+            els.clearMemoryStatus.className = 'setting-desc status-msg';
+          }
+          await refreshMemoryUI();
+        } catch (err) {
+          if (els.clearMemoryStatus) {
+            els.clearMemoryStatus.textContent = 'Failed to clear memory.';
+            els.clearMemoryStatus.className = 'setting-desc error-msg';
+          }
+        }
+      });
+    }
+
+    if (els.settingsCopyDiagBtn) {
+      els.settingsCopyDiagBtn.addEventListener('click', async () => {
+        const diagData = {
+          version: '3.0.0-rc.1',
+          timestamp: new Date().toISOString(),
+          settings: {
+            responseStyle: settingsState.responseStyle,
+            analysisDepth: settingsState.analysisDepth,
+            contextWindow: settingsState.contextWindow,
+            mockMode: settingsState.mockMode,
+            memoryEnabled: settingsState.memoryEnabled,
+            retentionDays: settingsState.retentionDays,
+            storageBudgetMb: settingsState.storageBudgetMb,
+            hasApiKey: !!(settingsState.apiKey && settingsState.apiKey.trim())
+          },
+          diagnostics: lastDiag || null
+        };
+
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(JSON.stringify(diagData, null, 2));
+          }
+          if (els.settingsDiagNotice) {
+            els.settingsDiagNotice.hidden = false;
+            els.settingsDiagNotice.textContent = 'Diagnostics copied to clipboard.';
+            setTimeout(() => { if (els.settingsDiagNotice) els.settingsDiagNotice.hidden = true; }, 3000);
+          }
+        } catch {
+          /* clipboard unavailable */
+        }
+      });
+    }
+
 
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       document.addEventListener('keydown', (e) => {
@@ -1367,8 +1673,8 @@
   // Global listeners
   try {
     if (chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
-      chrome.runtime.onMessage.addListener((message) => {
-        onRuntimeMessage(message);
+      chrome.runtime.onMessage.addListener((message, sender) => {
+        onRuntimeMessage(message, sender);
         return undefined;
       });
     }

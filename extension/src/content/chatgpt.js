@@ -44,6 +44,39 @@
     }
   }
 
+  // V3 Memory Enabled State (synced with chrome.storage.local)
+  let memoryEnabled = true;
+
+  function isMemoryEnabled() {
+    return memoryEnabled;
+  }
+
+  function setMemoryEnabled(val) {
+    memoryEnabled = !!val;
+    if (typeof autoRefresh === 'function') {
+      autoRefresh();
+    }
+  }
+
+  try {
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local?.get) {
+      chrome.storage.local.get(['wdaidt_memory_enabled'], (stored) => {
+        if (stored && typeof stored.wdaidt_memory_enabled === 'boolean') {
+          memoryEnabled = stored.wdaidt_memory_enabled;
+        }
+      });
+      if (chrome?.storage?.onChanged?.addListener) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === 'local' && changes.wdaidt_memory_enabled) {
+            memoryEnabled = !!changes.wdaidt_memory_enabled.newValue;
+          }
+        });
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
   function isChatGPTPage() {
     try {
       const host = window.location.hostname || '';
@@ -374,7 +407,9 @@
       if (hasInnerRole(el)) continue; // avoid parent/child duplicates
       const text = visibleText(el);
       if (!text) continue;
-      out.push({ role, text });
+      const sourceMessageId = (el.getAttribute && el.getAttribute('data-message-id')) ||
+        (el.closest && el.closest('[data-message-id]') && el.closest('[data-message-id]').getAttribute('data-message-id')) || null;
+      out.push({ role, text, sourceMessageId });
     }
     debug(`role-attributes: ${out.length} nodes`);
     return out;
@@ -397,7 +432,8 @@
       const role = roleOf(el, auto % 2 === 0 ? 'user' : 'assistant');
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
-      out.push({ role, text });
+      const sourceMessageId = (el.getAttribute && el.getAttribute('data-message-id')) || null;
+      out.push({ role, text, sourceMessageId });
     }
     debug(`message-id: ${out.length} nodes`);
     return out;
@@ -413,7 +449,9 @@
       const role = roleOf(el, auto % 2 === 0 ? 'user' : 'assistant');
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
-      out.push({ role, text });
+      const sourceMessageId = (el.getAttribute && el.getAttribute('data-message-id')) ||
+        (el.querySelector && el.querySelector('[data-message-id]') && el.querySelector('[data-message-id]').getAttribute('data-message-id')) || null;
+      out.push({ role, text, sourceMessageId });
     }
     return out;
   }
@@ -521,7 +559,9 @@
       seenEls.add(turn.el);
       const text = visibleText(turn.el);
       if (!text || !text.trim()) continue;
-      out.push({ role: turn.role, text });
+      const sourceMessageId = (turn.el.getAttribute && turn.el.getAttribute('data-message-id')) ||
+        (turn.el.closest && turn.el.closest('[data-message-id]') && turn.el.closest('[data-message-id]').getAttribute('data-message-id')) || null;
+      out.push({ role: turn.role, text, sourceMessageId });
     }
     debug(`modern-turns: ${out.length} nodes`);
     return out;
@@ -642,7 +682,8 @@
       }
       if (role !== 'user' && role !== 'assistant') continue;
       auto += 1;
-      out.push({ role, text: b.text });
+      const sourceMessageId = (b.el.getAttribute && b.el.getAttribute('data-message-id')) || null;
+      out.push({ role, text: b.text, sourceMessageId });
     }
     // Weakest signal of all: hook-less text blocks may be anything (toasts,
     // tooltips, announcements). Only accept a COMPLETE ordered pair — a lone
@@ -824,6 +865,27 @@
 
   const EMPTY = { prompt: '', response: '', paired: false, userCount: 0, assistantCount: 0, history: [] };
 
+  let v3Capture = null;
+  function getV3Capture() {
+    if (!v3Capture && typeof globalThis !== 'undefined' && globalThis.WDAIDT_CAPTURE) {
+      try {
+        const storageEngine =
+          typeof globalThis.WDAIDT_DB !== 'undefined' &&
+          typeof globalThis.WDAIDT_DB.createStorageEngine === 'function'
+            ? globalThis.WDAIDT_DB.createStorageEngine()
+            : null;
+        v3Capture = globalThis.WDAIDT_CAPTURE.createConversationCapture({
+          storageEngine,
+          getUrl: currentUrl,
+          onError: (err) => debug(`v3Capture error: ${(err && err.message) || err}`)
+        });
+      } catch (err) {
+        debug(`v3Capture init failed: ${(err && err.message) || err}`);
+      }
+    }
+    return v3Capture;
+  }
+
   function getLatestInteraction() {
     const url = currentUrl();
     if (!isChatGPTPage()) {
@@ -849,6 +911,8 @@
     let r = { ...EMPTY };
     let bestPartial = null;
     let bestPartialStrategy = '';
+    let winningNodes = [];
+    let bestPartialNodes = [];
 
     for (const [name, fn] of attempts) {
       let nodes = [];
@@ -863,12 +927,14 @@
         // Complete paired turn wins immediately.
         strategy = name;
         r = candidate;
+        winningNodes = nodes;
         break;
       }
       if (candidate.prompt || candidate.response) {
         if (!bestPartial || (!bestPartial.response && candidate.response) || (!bestPartial.prompt && candidate.prompt)) {
           bestPartial = candidate;
           bestPartialStrategy = name;
+          bestPartialNodes = nodes;
         }
       }
     }
@@ -890,12 +956,14 @@
         if (candidate.paired && candidate.prompt && candidate.response) {
           strategy = name;
           r = candidate;
+          winningNodes = nodes;
           break;
         }
         if (candidate.prompt || candidate.response) {
           if (!bestPartial || (!bestPartial.response && candidate.response)) {
             bestPartial = candidate;
             bestPartialStrategy = name;
+            bestPartialNodes = nodes;
           }
         }
       }
@@ -904,6 +972,19 @@
     if (!r.paired && bestPartial) {
       r = bestPartial;
       strategy = bestPartialStrategy;
+      winningNodes = bestPartialNodes;
+    }
+
+    // Incremental V3 Conversation Persistence (when memory is enabled)
+    if (winningNodes && winningNodes.length && isMemoryEnabled()) {
+      try {
+        const cap = getV3Capture();
+        if (cap && typeof cap.capture === 'function') {
+          cap.capture(winningNodes).catch(() => {});
+        }
+      } catch {
+        /* non-fatal */
+      }
     }
 
     debug(
@@ -951,7 +1032,9 @@
     ) {
       autoSeq += 1;
       autoEnabled = false;
-      autoDisarm();
+      if (!isMemoryEnabled()) {
+        autoDisarm();
+      }
       sendResponse({ ok: true, auto: false });
       return true;
     }
@@ -970,7 +1053,139 @@
       }
       return true;
     }
+
+    if (message.type === types.BUILD_CONTEXT || message.type === 'WDAIDT_BUILD_CONTEXT') {
+      handleBuildContext(message.payload || {})
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
+
+    if (message.type === types.RUN_RETENTION || message.type === 'WDAIDT_RUN_RETENTION') {
+      handleRunRetention(message.payload || {})
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
+
+    if (message.type === types.SUMMARIZE_CONVERSATION || message.type === 'WDAIDT_SUMMARIZE_CONVERSATION') {
+      handleSummarizeConversation(message.payload || {})
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
+
+    if (message.type === types.CLEAR_MEMORY || message.type === 'WDAIDT_CLEAR_MEMORY') {
+      handleClearMemory()
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
+
+    if (message.type === types.GET_MEMORY_STATS || message.type === 'WDAIDT_GET_MEMORY_STATS') {
+      handleGetMemoryStats()
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      return true;
+    }
     return false;
+  }
+
+  async function handleClearMemory() {
+    try {
+      const cap = getV3Capture();
+      if (cap && typeof cap.resetActiveConversation === 'function') {
+        cap.resetActiveConversation();
+      }
+      const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+      if (storage && typeof storage.deleteDatabase === 'function') {
+        await storage.deleteDatabase();
+      }
+      return { ok: true, cleared: true };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  }
+
+  async function handleGetMemoryStats() {
+    try {
+      const cap = getV3Capture();
+      const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+      const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+      let accounting = { conversationCount: 0, totalMessageCount: 0, estimatedStorageBytes: 0 };
+      if (storage && typeof storage.getStorageAccounting === 'function') {
+        try {
+          accounting = await storage.getStorageAccounting();
+        } catch { /* ignore */ }
+      }
+      return {
+        ok: true,
+        accounting,
+        activeConversationId: activeConvId,
+        hasActiveHistory: !!activeConvId,
+        memoryEnabled: isMemoryEnabled()
+      };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  }
+
+  async function handleBuildContext(payload) {
+    if (!isMemoryEnabled() || (payload && payload.memoryEnabled === false)) {
+      return { ok: true, contextResult: { exchanges: [], summary: null, isPartial: false } };
+    }
+    const builder = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_CONTEXT_BUILDER) || null;
+    if (!builder || typeof builder.buildConversationContext !== 'function') {
+      return { ok: false, error: 'Context builder module not available.' };
+    }
+    const cap = getV3Capture();
+    const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+    const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+    const activeExtId = cap && typeof cap.getActiveExternalChatId === 'function' ? cap.getActiveExternalChatId() : null;
+
+    const contextResult = await builder.buildConversationContext(storage, {
+      ...payload,
+      conversationId: (payload && payload.conversationId) || activeConvId,
+      externalChatId: (payload && payload.externalChatId) || activeExtId
+    });
+    return { ok: true, contextResult };
+  }
+
+  async function handleRunRetention(payload) {
+    const retention = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_RETENTION) || null;
+    if (!retention || typeof retention.runStorageRetention !== 'function') {
+      return { ok: false, error: 'Retention module not available.' };
+    }
+    const cap = getV3Capture();
+    const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+    const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+
+    const report = await retention.runStorageRetention(storage, {
+      ...payload,
+      activeConversationId: (payload && payload.activeConversationId) || activeConvId
+    });
+    return { ok: true, report };
+  }
+
+  async function handleSummarizeConversation(payload) {
+    const summarizer = (typeof globalThis !== 'undefined' && globalThis.WDAIDT_SUMMARIZER) || null;
+    if (!summarizer || typeof summarizer.summarizeConversation !== 'function') {
+      return { ok: false, error: 'Summarizer module not available.' };
+    }
+    const cap = getV3Capture();
+    const storage = cap ? (cap.storageEngine || (typeof globalThis !== 'undefined' && globalThis.WDAIDT_DB && globalThis.WDAIDT_DB.createStorageEngine ? globalThis.WDAIDT_DB.createStorageEngine() : null)) : null;
+    const activeConvId = cap && typeof cap.getActiveConversationId === 'function' ? cap.getActiveConversationId() : null;
+
+    const convId = (payload && payload.conversationId) || activeConvId;
+    if (!convId) {
+      return { ok: false, error: 'No active conversation found to summarize.' };
+    }
+
+    const result = await summarizer.summarizeConversation(storage, {
+      ...payload,
+      conversationId: convId
+    });
+    return { ok: true, result };
   }
 
   // ── Auto Analyze (V0.3): stream-completion trigger + debounce ──────────
@@ -1004,7 +1219,7 @@
 
   function autoCheck() {
     autoTimer = null;
-    if (!autoEnabled) return;
+    if (!autoEnabled && !isMemoryEnabled()) return;
     try {
       if (typeof document !== 'undefined' && document.hidden) return;
     } catch {
@@ -1016,6 +1231,7 @@
     } catch {
       return;
     }
+    if (!autoEnabled) return;
     if (!r || !r.onChatGPT || !r.prompt || !r.response || !r.paired) return;
     const h = snapshotHash(r);
     if (h === lastNotifiedHash) return;
@@ -1039,7 +1255,7 @@
   }
 
   function autoSchedule() {
-    if (!autoEnabled) return;
+    if (!autoEnabled && !isMemoryEnabled()) return;
     try {
       if (autoTimer) clearTimeout(autoTimer);
       autoTimer = setTimeout(autoCheck, AUTO_DEBOUNCE_MS);
@@ -1101,7 +1317,7 @@
     }
     if (mine !== autoSeq) return; // superseded by newer ON/OFF/refresh
     autoEnabled = on;
-    if (on) {
+    if (on || isMemoryEnabled()) {
       autoArm();
       autoSchedule();
     } else {
@@ -1149,6 +1365,14 @@
       isChatGPTPage,
       getLatest: getLatestInteraction,
       pairExchanges,
+      getConversationCapture: getV3Capture,
+      buildContext: handleBuildContext,
+      runRetention: handleRunRetention,
+      summarizeConversation: handleSummarizeConversation,
+      clearMemory: handleClearMemory,
+      getMemoryStats: handleGetMemoryStats,
+      isMemoryEnabled,
+      setMemoryEnabled,
     });
   } catch {
     // non-fatal
