@@ -613,6 +613,7 @@ class MockIDBDatabase {
 class MockIndexedDBFactory {
   constructor() {
     this._databases = new Map();
+    this.IDBKeyRange = MockIDBKeyRange;
   }
 
   open(name, version = 1) {

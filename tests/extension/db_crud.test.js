@@ -261,10 +261,10 @@ test('db_crud: in-place message revision updates text, increments revision, and 
   assert.equal(revised.auditMetadata.previousContentHash, orig.contentHash);
   assert.equal(revised.auditMetadata.revisionCount, 2);
 
-  // Check conversation character counts adjusted
+  // Check conversation character counts adjusted (message content only)
   const conv = await engine.getConversation('conv_600');
-  const expectedChars = newText.length + 'Summary of draft 1'.length;
-  assert.equal(conv.totalCharacterCount, expectedChars);
+  const expectedChars = newText.length;
+  assert.equal(conv.totalCharacterCount, expectedChars, 'totalCharacterCount strictly measures message content characters');
 
   // Verify memory status is marked stale
   const mem = await engine.getConversationMemory('conv_600');

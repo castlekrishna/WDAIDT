@@ -225,6 +225,9 @@
   // Database Connection Management
   function createStorageEngine(options = {}) {
     const customIdb = options.indexedDB || (typeof indexedDB !== 'undefined' ? indexedDB : null);
+    const KeyRange = options.IDBKeyRange ||
+      (typeof IDBKeyRange !== 'undefined' ? IDBKeyRange : null) ||
+      (customIdb && customIdb.IDBKeyRange ? customIdb.IDBKeyRange : null);
     const dbName = options.name || DB_NAME;
     const dbVersion = options.version || DB_VERSION;
     const onUpgradeHook = options.onUpgrade || null;
@@ -321,71 +324,95 @@
     }
 
     // Transaction Runner Helper: Segregates transactions & enforces atomic commit
-    async function runTx(storeNames, mode, workerFn) {
-      const db = await open();
-      return new Promise((resolve, reject) => {
-        let result = undefined;
-        let workerErr = null;
-        let txCompleted = false;
-        let workerFinished = false;
-
-        const tx = db.transaction(storeNames, mode);
-
-        function checkDone() {
-          if (workerErr) {
-            reject(workerErr);
-          } else if (txCompleted && workerFinished) {
-            resolve(result);
+    function runTx(storeNames, mode, executor) {
+      return open().then((db) => {
+        return new Promise((resolve, reject) => {
+          let tx;
+          try {
+            tx = db.transaction(storeNames, mode);
+          } catch (err) {
+            let code = 'TRANSACTION_ERROR';
+            if (err.name === 'QuotaExceededError') code = 'QUOTA_EXCEEDED';
+            return reject(new StorageError(code, `Failed to start transaction on [${storeNames}]: ${err.message}`, err));
           }
-        }
 
-        tx.oncomplete = () => {
-          txCompleted = true;
-          checkDone();
-        };
+          let txResult = undefined;
+          let settled = false;
+          let workerFinished = false;
+          let txCompleted = false;
 
-        tx.onerror = (e) => {
-          const err = tx.error || (e && e.target && e.target.error);
-          let code = 'TRANSACTION_ERROR';
-          if (err && err.name === 'ConstraintError') code = 'CONSTRAINT_ERROR';
-          if (err && err.name === 'QuotaExceededError') code = 'QUOTA_EXCEEDED';
-          reject(new StorageError(code, `Transaction failed on [${storeNames}]: ${(err && err.message) || 'Unknown error'}`, err));
-        };
+          function setResult(val) {
+            txResult = val;
+          }
 
-        tx.onabort = () => {
-          const err = tx.error;
-          reject(workerErr || new StorageError('TRANSACTION_ABORTED', `Transaction was aborted on [${storeNames}].`, err));
-        };
+          function checkSuccess() {
+            if (!settled && txCompleted && workerFinished) {
+              settled = true;
+              resolve(txResult);
+            }
+          }
 
-        try {
+          tx.oncomplete = () => {
+            txCompleted = true;
+            checkSuccess();
+          };
+
+          tx.onerror = (e) => {
+            if (!settled) {
+              settled = true;
+              const err = tx.error || (e && e.target && e.target.error);
+              let code = 'TRANSACTION_ERROR';
+              if (err && err.name === 'ConstraintError') code = 'CONSTRAINT_ERROR';
+              if (err && err.name === 'QuotaExceededError') code = 'QUOTA_EXCEEDED';
+              reject(new StorageError(code, `Transaction failed on [${storeNames}]: ${(err && err.message) || 'Unknown error'}`, err));
+            }
+          };
+
+          tx.onabort = () => {
+            if (!settled) {
+              settled = true;
+              const err = tx.error;
+              let code = 'TRANSACTION_ABORTED';
+              if (err && err.name === 'ConstraintError') code = 'CONSTRAINT_ERROR';
+              if (err && err.name === 'QuotaExceededError') code = 'QUOTA_EXCEEDED';
+              reject(new StorageError(code, `Transaction was aborted on [${storeNames}]: ${(err && err.message) || 'Aborted'}`, err));
+            }
+          };
+
           const stores = Array.isArray(storeNames)
             ? storeNames.map((s) => tx.objectStore(s))
             : [tx.objectStore(storeNames)];
 
-          Promise.resolve(workerFn(...stores, tx))
-            .then((val) => {
-              result = val;
+          try {
+            const maybePromise = executor(stores, setResult, tx);
+            if (maybePromise && typeof maybePromise.then === 'function') {
+              maybePromise
+                .then((val) => {
+                  if (val !== undefined && txResult === undefined) {
+                    txResult = val;
+                  }
+                  workerFinished = true;
+                  checkSuccess();
+                })
+                .catch((err) => {
+                  if (!settled) {
+                    settled = true;
+                    try { tx.abort(); } catch { /* ignore */ }
+                    reject(err instanceof StorageError ? err : new StorageError('TRANSACTION_ERROR', err.message, err));
+                  }
+                });
+            } else {
               workerFinished = true;
-              checkDone();
-            })
-            .catch((err) => {
-              workerErr = err;
+              checkSuccess();
+            }
+          } catch (err) {
+            if (!settled) {
+              settled = true;
               try { tx.abort(); } catch { /* ignore */ }
-              checkDone();
-            });
-        } catch (e) {
-          workerErr = e;
-          try { tx.abort(); } catch { /* ignore */ }
-          checkDone();
-        }
-      });
-    }
-
-    // Request to Promise helper inside a transaction
-    function reqPromise(req) {
-      return new Promise((resolve, reject) => {
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+              reject(err instanceof StorageError ? err : new StorageError('TRANSACTION_ERROR', err.message, err));
+            }
+          }
+        });
       });
     }
 
@@ -411,8 +438,11 @@
         summaryUpdatedAt: null
       };
 
-      await runTx(STORES.CONVERSATIONS, 'readwrite', (convStore) => {
-        return reqPromise(convStore.add(record));
+      await runTx(STORES.CONVERSATIONS, 'readwrite', ([convStore], setResult) => {
+        const req = convStore.add(record);
+        req.onsuccess = () => {
+          setResult(record);
+        };
       });
 
       return record;
@@ -420,102 +450,116 @@
 
     async function getConversation(conversationId) {
       if (!conversationId) return null;
-      return runTx(STORES.CONVERSATIONS, 'readonly', async (convStore) => {
-        const res = await reqPromise(convStore.get(conversationId));
-        return res || null;
+      return runTx(STORES.CONVERSATIONS, 'readonly', ([convStore], setResult) => {
+        const req = convStore.get(conversationId);
+        req.onsuccess = () => {
+          setResult(req.result || null);
+        };
       });
     }
 
     async function getConversationByExternalId(externalChatId, platform = 'chatgpt') {
       if (!externalChatId) return null;
-      return runTx(STORES.CONVERSATIONS, 'readonly', async (convStore) => {
+      return runTx(STORES.CONVERSATIONS, 'readonly', ([convStore], setResult) => {
         const index = convStore.index('by_externalChatId');
-        const res = await reqPromise(index.get([platform, externalChatId]));
-        return res || null;
+        const req = index.get([platform, externalChatId]);
+        req.onsuccess = () => {
+          setResult(req.result || null);
+        };
       });
     }
 
     async function updateConversation(conversationId, updates) {
       if (!conversationId) throw new StorageError('VALIDATION_ERROR', 'conversationId is required for update.');
-      return runTx(STORES.CONVERSATIONS, 'readwrite', async (convStore) => {
-        const existing = await reqPromise(convStore.get(conversationId));
-        if (!existing) {
-          throw new StorageError('RECORD_NOT_FOUND', `Conversation "${conversationId}" not found.`);
-        }
-        const merged = { ...existing, ...updates, conversationId }; // prevent mutating PK
-        validateConversation(merged);
-        await reqPromise(convStore.put(merged));
-        return merged;
+      return runTx(STORES.CONVERSATIONS, 'readwrite', ([convStore], setResult, tx) => {
+        const getReq = convStore.get(conversationId);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) {
+            const err = new StorageError('RECORD_NOT_FOUND', `Conversation "${conversationId}" not found.`);
+            try { tx.abort(); } catch { /* ignore */ }
+            throw err;
+          }
+          const merged = { ...existing, ...updates, conversationId };
+          validateConversation(merged);
+          const putReq = convStore.put(merged);
+          putReq.onsuccess = () => {
+            setResult(merged);
+          };
+        };
       });
     }
 
     async function deleteConversation(conversationId) {
       if (!conversationId) return { deleted: false };
-      // Atomic cascade deletion: conversations, messages, memory
-      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', async (convStore, msgStore, memStore) => {
-        const existing = await reqPromise(convStore.get(conversationId));
-        if (!existing) return { deleted: false };
+      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', ([convStore, msgStore, memStore], setResult) => {
+        const getReq = convStore.get(conversationId);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) {
+            setResult({ deleted: false });
+            return;
+          }
 
-        // 1. Delete all messages for conversation
-        const msgIndex = msgStore.index('by_conversationId');
-        let messageKeys = [];
-        if (typeof msgIndex.getAllKeys === 'function') {
-          messageKeys = await reqPromise(msgIndex.getAllKeys(IDBKeyRange.only(conversationId)));
-        } else if (typeof msgIndex.getAll === 'function') {
-          const msgs = await reqPromise(msgIndex.getAll(IDBKeyRange.only(conversationId)));
-          messageKeys = (msgs || []).map((m) => m.messageId);
-        } else {
-          const req = msgIndex.openCursor(IDBKeyRange.only(conversationId));
-          await new Promise((resolve, reject) => {
-            req.onsuccess = (e) => {
+          const msgIndex = msgStore.index('by_conversationId');
+          const range = KeyRange && typeof KeyRange.only === 'function' ? KeyRange.only(conversationId) : conversationId;
+
+          const finishDeletion = (keys) => {
+            for (const pk of keys) {
+              msgStore.delete(pk);
+            }
+            memStore.delete(conversationId);
+            convStore.delete(conversationId);
+            setResult({ deleted: true, conversationId });
+          };
+
+          if (typeof msgIndex.getAllKeys === 'function') {
+            const keysReq = msgIndex.getAllKeys(range);
+            keysReq.onsuccess = () => {
+              finishDeletion(keysReq.result || []);
+            };
+          } else if (typeof msgIndex.getAll === 'function') {
+            const allReq = msgIndex.getAll(range);
+            allReq.onsuccess = () => {
+              const keys = (allReq.result || []).map((m) => m.messageId);
+              finishDeletion(keys);
+            };
+          } else {
+            const curReq = msgIndex.openCursor(range);
+            const keys = [];
+            curReq.onsuccess = (e) => {
               const cursor = e.target.result;
               if (cursor) {
-                cursor.delete();
+                keys.push(cursor.primaryKey);
                 cursor.continue();
               } else {
-                resolve();
+                finishDeletion(keys);
               }
             };
-            req.onerror = () => reject(req.error);
-          });
-        }
-
-        for (const pk of (messageKeys || [])) {
-          await reqPromise(msgStore.delete(pk));
-        }
-
-        // 2. Delete memory record
-        await reqPromise(memStore.delete(conversationId));
-
-        // 3. Delete conversation record
-        await reqPromise(convStore.delete(conversationId));
-
-        return { deleted: true, conversationId };
+          }
+        };
       });
     }
 
     async function listConversations(options = {}) {
       const limit = Math.max(1, parseInt(options.limit, 10) || 50);
-      const reverse = options.reverse !== false; // default newest activity first
+      const reverse = options.reverse !== false;
 
-      return runTx(STORES.CONVERSATIONS, 'readonly', (convStore) => {
+      return runTx(STORES.CONVERSATIONS, 'readonly', ([convStore], setResult) => {
         const index = convStore.index('by_lastActivityAt');
         const direction = reverse ? 'prev' : 'next';
         const req = index.openCursor(null, direction);
         const results = [];
 
-        return new Promise((resolve, reject) => {
-          req.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor && results.length < limit) {
-              results.push(cursor.value);
-              cursor.continue();
-            } else {
-              resolve(results);
-            }
-          };
-          req.onerror = () => reject(req.error);
-        });
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor && results.length < limit) {
+            results.push(cursor.value);
+            cursor.continue();
+          } else {
+            setResult(results);
+          }
+        };
       });
     }
 
@@ -548,24 +592,30 @@
         captureStatus: data.captureStatus || 'complete'
       };
 
-      // Atomic transaction: store message and update conversation accounting
-      await runTx([STORES.CONVERSATIONS, STORES.MESSAGES], 'readwrite', async (convStore, msgStore) => {
-        const conv = await reqPromise(convStore.get(record.conversationId));
-        if (!conv) {
-          throw new StorageError('RECORD_NOT_FOUND', `Parent conversation "${record.conversationId}" not found.`);
-        }
+      await runTx([STORES.CONVERSATIONS, STORES.MESSAGES], 'readwrite', ([convStore, msgStore], setResult, tx) => {
+        const getConvReq = convStore.get(record.conversationId);
+        getConvReq.onsuccess = () => {
+          const conv = getConvReq.result;
+          if (!conv) {
+            const err = new StorageError('RECORD_NOT_FOUND', `Parent conversation "${record.conversationId}" not found.`);
+            try { tx.abort(); } catch { /* ignore */ }
+            throw err;
+          }
 
-        // Add message record (will reject on constraint error if duplicate segment_seq)
-        await reqPromise(msgStore.add(record));
+          const addMsgReq = msgStore.add(record);
+          addMsgReq.onsuccess = () => {
+            conv.messageCount = (conv.messageCount || 0) + 1;
+            conv.totalCharacterCount = (conv.totalCharacterCount || 0) + charCount;
+            conv.estimatedSizeBytes = (conv.estimatedSizeBytes || RECORD_METADATA_OVERHEAD_BYTES) + sizeBytes;
+            conv.lastActivityAt = Math.max(conv.lastActivityAt || 0, record.capturedAt);
+            conv.lastCapturedMessageId = record.messageId;
 
-        // Update conversation exact accounting and activity
-        conv.messageCount = (conv.messageCount || 0) + 1;
-        conv.totalCharacterCount = (conv.totalCharacterCount || 0) + charCount;
-        conv.estimatedSizeBytes = (conv.estimatedSizeBytes || RECORD_METADATA_OVERHEAD_BYTES) + sizeBytes;
-        conv.lastActivityAt = Math.max(conv.lastActivityAt || 0, record.capturedAt);
-        conv.lastCapturedMessageId = record.messageId;
-
-        await reqPromise(convStore.put(conv));
+            const putConvReq = convStore.put(conv);
+            putConvReq.onsuccess = () => {
+              setResult(record);
+            };
+          };
+        };
       });
 
       return record;
@@ -573,57 +623,55 @@
 
     async function getMessage(messageId) {
       if (!messageId) return null;
-      return runTx(STORES.MESSAGES, 'readonly', async (msgStore) => {
-        const res = await reqPromise(msgStore.get(messageId));
-        return res || null;
+      return runTx(STORES.MESSAGES, 'readonly', ([msgStore], setResult) => {
+        const req = msgStore.get(messageId);
+        req.onsuccess = () => {
+          setResult(req.result || null);
+        };
       });
     }
 
     async function getMessagesByConversation(conversationId, options = {}) {
       if (!conversationId) return [];
       const segmentId = options.segmentId;
-      const limit = options.limit ? Math.max(1, parseInt(options.limit, 10)) : 1000;
+      const limit = options.limit ? Math.max(1, parseInt(options.limit, 10) || 1000) : 1000;
       const reverse = !!options.reverse;
 
-      return runTx(STORES.MESSAGES, 'readonly', (msgStore) => {
-        let req;
+      return runTx(STORES.MESSAGES, 'readonly', ([msgStore], setResult) => {
         const results = [];
+        let req;
 
         if (segmentId != null) {
-          // Query compound index by_conv_segment_seq with exact segment bounds
           const index = msgStore.index('by_conv_segment_seq');
-          const range = IDBKeyRange.bound(
-            [conversationId, segmentId, options.minSequence != null ? options.minSequence : -Infinity],
-            [conversationId, segmentId, options.maxSequence != null ? options.maxSequence : Infinity]
-          );
+          const range = KeyRange && typeof KeyRange.bound === 'function'
+            ? KeyRange.bound(
+                [conversationId, segmentId, options.minSequence != null ? options.minSequence : -Infinity],
+                [conversationId, segmentId, options.maxSequence != null ? options.maxSequence : Infinity]
+              )
+            : null;
           req = index.openCursor(range, reverse ? 'prev' : 'next');
         } else {
-          // Query by_conversationId index
           const index = msgStore.index('by_conversationId');
-          const range = IDBKeyRange.only(conversationId);
+          const range = KeyRange && typeof KeyRange.only === 'function' ? KeyRange.only(conversationId) : conversationId;
           req = index.openCursor(range, reverse ? 'prev' : 'next');
         }
 
-        return new Promise((resolve, reject) => {
-          req.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor && results.length < limit) {
-              results.push(cursor.value);
-              cursor.continue();
-            } else {
-              // If queried by conversationId, sort deterministically by segmentId and turnSequence
-              if (segmentId == null) {
-                results.sort((a, b) => {
-                  if (a.segmentId !== b.segmentId) return a.segmentId - b.segmentId;
-                  return a.turnSequence - b.turnSequence;
-                });
-                if (reverse) results.reverse();
-              }
-              resolve(results);
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor && results.length < limit) {
+            results.push(cursor.value);
+            cursor.continue();
+          } else {
+            if (segmentId == null) {
+              results.sort((a, b) => {
+                if (a.segmentId !== b.segmentId) return a.segmentId - b.segmentId;
+                return a.turnSequence - b.turnSequence;
+              });
+              if (reverse) results.reverse();
             }
-          };
-          req.onerror = () => reject(req.error);
-        });
+            setResult(results);
+          }
+        };
       });
     }
 
@@ -634,83 +682,106 @@
         throw new StorageError('VALIDATION_ERROR', 'newContent must be a string.');
       }
 
-      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', async (convStore, msgStore, memStore) => {
-        const msg = await reqPromise(msgStore.get(messageId));
-        if (!msg) {
-          throw new StorageError('RECORD_NOT_FOUND', `Message "${messageId}" not found.`);
-        }
-        const conv = await reqPromise(convStore.get(msg.conversationId));
-        if (!conv) {
-          throw new StorageError('RECORD_NOT_FOUND', `Parent conversation "${msg.conversationId}" not found.`);
-        }
+      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', ([convStore, msgStore, memStore], setResult, tx) => {
+        const getMsgReq = msgStore.get(messageId);
+        getMsgReq.onsuccess = () => {
+          const msg = getMsgReq.result;
+          if (!msg) {
+            const err = new StorageError('RECORD_NOT_FOUND', `Message "${messageId}" not found.`);
+            try { tx.abort(); } catch { /* ignore */ }
+            throw err;
+          }
 
-        const oldChars = msg.characterCount || 0;
-        const oldBytes = msg.estimatedSizeBytes || estimateSizeBytes(oldChars, 1);
-        const oldHash = msg.contentHash;
+          const getConvReq = convStore.get(msg.conversationId);
+          getConvReq.onsuccess = () => {
+            const conv = getConvReq.result;
+            if (!conv) {
+              const err = new StorageError('RECORD_NOT_FOUND', `Parent conversation "${msg.conversationId}" not found.`);
+              try { tx.abort(); } catch { /* ignore */ }
+              throw err;
+            }
 
-        const newChars = newContent.length;
-        const newBytes = estimateSizeBytes(newChars, 1);
-        const newHash = options.contentHash || computeContentHash(newContent);
+            const oldChars = msg.characterCount || 0;
+            const oldBytes = msg.estimatedSizeBytes || estimateSizeBytes(oldChars, 1);
+            const oldHash = msg.contentHash;
 
-        // Update in place with audit metadata
-        msg.content = newContent;
-        msg.contentHash = newHash;
-        msg.characterCount = newChars;
-        msg.estimatedSizeBytes = newBytes;
-        msg.revisionNumber = (msg.revisionNumber || 1) + 1;
-        msg.auditMetadata = {
-          previousContentHash: oldHash,
-          lastEditedAt: Date.now(),
-          revisionCount: ((msg.auditMetadata && msg.auditMetadata.revisionCount) || 1) + 1
+            const newChars = newContent.length;
+            const newBytes = estimateSizeBytes(newChars, 1);
+            const newHash = options.contentHash || computeContentHash(newContent);
+
+            msg.content = newContent;
+            msg.contentHash = newHash;
+            msg.characterCount = newChars;
+            msg.estimatedSizeBytes = newBytes;
+            msg.revisionNumber = (msg.revisionNumber || 1) + 1;
+            msg.auditMetadata = {
+              previousContentHash: oldHash,
+              lastEditedAt: Date.now(),
+              revisionCount: ((msg.auditMetadata && msg.auditMetadata.revisionCount) || 1) + 1
+            };
+            if (options.captureStatus) msg.captureStatus = options.captureStatus;
+
+            msgStore.put(msg);
+
+            // Reconcile conversation accounting
+            conv.totalCharacterCount = Math.max(0, (conv.totalCharacterCount || 0) + (newChars - oldChars));
+            conv.estimatedSizeBytes = Math.max(RECORD_METADATA_OVERHEAD_BYTES, (conv.estimatedSizeBytes || 0) + (newBytes - oldBytes));
+            conv.lastActivityAt = Math.max(conv.lastActivityAt || 0, Date.now());
+            convStore.put(conv);
+
+            const getMemReq = memStore.get(msg.conversationId);
+            getMemReq.onsuccess = () => {
+              const mem = getMemReq.result;
+              if (mem && mem.status !== 'stale') {
+                mem.status = 'stale';
+                memStore.put(mem);
+              }
+              setResult(msg);
+            };
+          };
         };
-        if (options.captureStatus) msg.captureStatus = options.captureStatus;
-
-        await reqPromise(msgStore.put(msg));
-
-        // Reconcile conversation accounting
-        conv.totalCharacterCount = Math.max(0, (conv.totalCharacterCount || 0) + (newChars - oldChars));
-        conv.estimatedSizeBytes = Math.max(RECORD_METADATA_OVERHEAD_BYTES, (conv.estimatedSizeBytes || 0) + (newBytes - oldBytes));
-        conv.lastActivityAt = Math.max(conv.lastActivityAt || 0, Date.now());
-        await reqPromise(convStore.put(conv));
-
-        // Mark associated conversation memory as stale
-        const mem = await reqPromise(memStore.get(msg.conversationId));
-        if (mem && mem.status !== 'stale') {
-          mem.status = 'stale';
-          await reqPromise(memStore.put(mem));
-        }
-
-        return msg;
       });
     }
 
     async function deleteMessage(messageId) {
       if (!messageId) return { deleted: false };
-      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', async (convStore, msgStore, memStore) => {
-        const msg = await reqPromise(msgStore.get(messageId));
-        if (!msg) return { deleted: false };
-
-        const conv = await reqPromise(convStore.get(msg.conversationId));
-        await reqPromise(msgStore.delete(messageId));
-
-        if (conv) {
-          conv.messageCount = Math.max(0, (conv.messageCount || 1) - 1);
-          conv.totalCharacterCount = Math.max(0, (conv.totalCharacterCount || msg.characterCount) - msg.characterCount);
-          conv.estimatedSizeBytes = Math.max(
-            RECORD_METADATA_OVERHEAD_BYTES,
-            (conv.estimatedSizeBytes || msg.estimatedSizeBytes) - msg.estimatedSizeBytes
-          );
-          await reqPromise(convStore.put(conv));
-
-          // Mark memory stale
-          const mem = await reqPromise(memStore.get(msg.conversationId));
-          if (mem && mem.status !== 'stale') {
-            mem.status = 'stale';
-            await reqPromise(memStore.put(mem));
+      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', ([convStore, msgStore, memStore], setResult) => {
+        const getMsgReq = msgStore.get(messageId);
+        getMsgReq.onsuccess = () => {
+          const msg = getMsgReq.result;
+          if (!msg) {
+            setResult({ deleted: false });
+            return;
           }
-        }
 
-        return { deleted: true, messageId };
+          const getConvReq = convStore.get(msg.conversationId);
+          getConvReq.onsuccess = () => {
+            const conv = getConvReq.result;
+            msgStore.delete(messageId);
+
+            if (conv) {
+              conv.messageCount = Math.max(0, (conv.messageCount || 1) - 1);
+              conv.totalCharacterCount = Math.max(0, (conv.totalCharacterCount || msg.characterCount) - msg.characterCount);
+              conv.estimatedSizeBytes = Math.max(
+                RECORD_METADATA_OVERHEAD_BYTES,
+                (conv.estimatedSizeBytes || msg.estimatedSizeBytes) - msg.estimatedSizeBytes
+              );
+              convStore.put(conv);
+
+              const getMemReq = memStore.get(msg.conversationId);
+              getMemReq.onsuccess = () => {
+                const mem = getMemReq.result;
+                if (mem && mem.status !== 'stale') {
+                  mem.status = 'stale';
+                  memStore.put(mem);
+                }
+                setResult({ deleted: true, messageId });
+              };
+            } else {
+              setResult({ deleted: true, messageId });
+            }
+          };
+        };
       });
     }
 
@@ -718,9 +789,11 @@
 
     async function getConversationMemory(conversationId) {
       if (!conversationId) return null;
-      return runTx(STORES.MEMORY, 'readonly', async (memStore) => {
-        const res = await reqPromise(memStore.get(conversationId));
-        return res || null;
+      return runTx(STORES.MEMORY, 'readonly', ([memStore], setResult) => {
+        const req = memStore.get(conversationId);
+        req.onsuccess = () => {
+          setResult(req.result || null);
+        };
       });
     }
 
@@ -748,125 +821,145 @@
         estimatedSizeBytes: sizeBytes
       };
 
-      // Atomic update of memory and conversation metadata
-      await runTx([STORES.CONVERSATIONS, STORES.MEMORY], 'readwrite', async (convStore, memStore) => {
-        const conv = await reqPromise(convStore.get(record.conversationId));
-        if (!conv) {
-          throw new StorageError('RECORD_NOT_FOUND', `Parent conversation "${record.conversationId}" not found.`);
-        }
+      return runTx([STORES.CONVERSATIONS, STORES.MEMORY], 'readwrite', ([convStore, memStore], setResult, tx) => {
+        const getConvReq = convStore.get(record.conversationId);
+        getConvReq.onsuccess = () => {
+          const conv = getConvReq.result;
+          if (!conv) {
+            const err = new StorageError('RECORD_NOT_FOUND', `Parent conversation "${record.conversationId}" not found.`);
+            try { tx.abort(); } catch { /* ignore */ }
+            throw err;
+          }
 
-        const existingMem = await reqPromise(memStore.get(record.conversationId));
-        const oldMemChars = existingMem ? (existingMem.characterCount || 0) : 0;
-        const oldMemBytes = existingMem ? (existingMem.estimatedSizeBytes || 0) : 0;
+          const getMemReq = memStore.get(record.conversationId);
+          getMemReq.onsuccess = () => {
+            const existingMem = getMemReq.result;
+            const oldMemBytes = existingMem ? (existingMem.estimatedSizeBytes || 0) : 0;
 
-        await reqPromise(memStore.put(record));
+            memStore.put(record);
 
-        // Reconcile conversation totals
-        conv.totalCharacterCount = Math.max(0, (conv.totalCharacterCount || 0) + (charCount - oldMemChars));
-        conv.estimatedSizeBytes = Math.max(RECORD_METADATA_OVERHEAD_BYTES, (conv.estimatedSizeBytes || 0) + (sizeBytes - oldMemBytes));
-        conv.summaryRevision = record.summaryRevision;
-        conv.summaryUpdatedAt = record.updatedAt;
+            // Reconcile conversation totals:
+            // totalCharacterCount strictly measures message content, so it is preserved.
+            // estimatedSizeBytes incorporates memory record footprint.
+            conv.estimatedSizeBytes = Math.max(
+              RECORD_METADATA_OVERHEAD_BYTES,
+              (conv.estimatedSizeBytes || RECORD_METADATA_OVERHEAD_BYTES) + (sizeBytes - oldMemBytes)
+            );
+            conv.summaryRevision = record.summaryRevision;
+            conv.summaryUpdatedAt = record.updatedAt;
 
-        await reqPromise(convStore.put(conv));
+            const putConvReq = convStore.put(conv);
+            putConvReq.onsuccess = () => {
+              setResult(record);
+            };
+          };
+        };
       });
-
-      return record;
     }
 
     // ── Global Storage Accounting API ──────────────────────────────────────
 
     async function getStorageAccounting() {
-      return runTx([STORES.CONVERSATIONS], 'readonly', (convStore) => {
+      return runTx(STORES.CONVERSATIONS, 'readonly', ([convStore], setResult) => {
         const req = convStore.openCursor();
         let convCount = 0;
         let totalMessages = 0;
         let totalChars = 0;
         let totalEstimatedBytes = 0;
 
-        return new Promise((resolve, reject) => {
-          req.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor) {
-              const c = cursor.value;
-              convCount += 1;
-              totalMessages += (c.messageCount || 0);
-              totalChars += (c.totalCharacterCount || 0);
-              totalEstimatedBytes += (c.estimatedSizeBytes || RECORD_METADATA_OVERHEAD_BYTES);
-              cursor.continue();
-            } else {
-              resolve({
-                conversationCount: convCount,
-                totalMessageCount: totalMessages,
-                totalCharacterCount: totalChars,
-                estimatedStorageBytes: totalEstimatedBytes
-              });
-            }
-          };
-          req.onerror = () => reject(req.error);
-        });
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            const c = cursor.value;
+            convCount += 1;
+            totalMessages += (c.messageCount || 0);
+            totalChars += (c.totalCharacterCount || 0);
+            totalEstimatedBytes += (c.estimatedSizeBytes || RECORD_METADATA_OVERHEAD_BYTES);
+            cursor.continue();
+          } else {
+            setResult({
+              conversationCount: convCount,
+              totalMessageCount: totalMessages,
+              totalCharacterCount: totalChars,
+              estimatedStorageBytes: totalEstimatedBytes
+            });
+          }
+        };
       });
     }
 
     // Authoritative Repair & Verification of Accounting Totals
     async function repairConversationAccounting(conversationId) {
       if (!conversationId) return null;
-      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', async (convStore, msgStore, memStore) => {
-        const conv = await reqPromise(convStore.get(conversationId));
-        if (!conv) return null;
+      return runTx([STORES.CONVERSATIONS, STORES.MESSAGES, STORES.MEMORY], 'readwrite', ([convStore, msgStore, memStore], setResult) => {
+        const getConvReq = convStore.get(conversationId);
+        getConvReq.onsuccess = () => {
+          const conv = getConvReq.result;
+          if (!conv) {
+            setResult(null);
+            return;
+          }
 
-        let exactMsgCount = 0;
-        let exactChars = 0;
-        let estimatedBytes = RECORD_METADATA_OVERHEAD_BYTES;
-        let latestCapturedAt = conv.createdAt;
-        let lastMsgId = null;
+          const msgIndex = msgStore.index('by_conversationId');
+          const range = KeyRange && typeof KeyRange.only === 'function' ? KeyRange.only(conversationId) : conversationId;
 
-        const msgIndex = msgStore.index('by_conversationId');
-        let msgs = [];
-        if (typeof msgIndex.getAll === 'function') {
-          msgs = await reqPromise(msgIndex.getAll(IDBKeyRange.only(conversationId)));
-        } else {
-          const req = msgIndex.openCursor(IDBKeyRange.only(conversationId));
-          await new Promise((resolve, reject) => {
-            req.onsuccess = (e) => {
+          const computeAndSave = (msgs) => {
+            let exactMsgCount = 0;
+            let exactMsgChars = 0;
+            let estimatedBytes = RECORD_METADATA_OVERHEAD_BYTES;
+            let latestCapturedAt = conv.createdAt;
+            let lastMsgId = null;
+
+            for (const m of (msgs || [])) {
+              exactMsgCount += 1;
+              const mChars = m.content ? m.content.length : 0;
+              exactMsgChars += mChars;
+              estimatedBytes += (m.estimatedSizeBytes || estimateSizeBytes(mChars, 1));
+              if (m.capturedAt && m.capturedAt >= latestCapturedAt) {
+                latestCapturedAt = m.capturedAt;
+                lastMsgId = m.messageId;
+              }
+            }
+
+            const getMemReq = memStore.get(conversationId);
+            getMemReq.onsuccess = () => {
+              const mem = getMemReq.result;
+              if (mem) {
+                estimatedBytes += (mem.estimatedSizeBytes || estimateSizeBytes(mem.compactSummary ? mem.compactSummary.length : 0, 1));
+              }
+
+              conv.messageCount = exactMsgCount;
+              conv.totalCharacterCount = exactMsgChars; // Message content characters only
+              conv.estimatedSizeBytes = estimatedBytes; // Metadata + messages + summary
+              conv.lastActivityAt = Math.max(conv.lastActivityAt || 0, latestCapturedAt);
+              if (lastMsgId) conv.lastCapturedMessageId = lastMsgId;
+
+              const putReq = convStore.put(conv);
+              putReq.onsuccess = () => {
+                setResult(conv);
+              };
+            };
+          };
+
+          if (typeof msgIndex.getAll === 'function') {
+            const allReq = msgIndex.getAll(range);
+            allReq.onsuccess = () => {
+              computeAndSave(allReq.result || []);
+            };
+          } else {
+            const msgs = [];
+            const curReq = msgIndex.openCursor(range);
+            curReq.onsuccess = (e) => {
               const cursor = e.target.result;
               if (cursor) {
                 msgs.push(cursor.value);
                 cursor.continue();
               } else {
-                resolve();
+                computeAndSave(msgs);
               }
             };
-            req.onerror = () => reject(req.error);
-          });
-        }
-
-        for (const m of (msgs || [])) {
-          exactMsgCount += 1;
-          const mChars = m.content ? m.content.length : 0;
-          exactChars += mChars;
-          estimatedBytes += estimateSizeBytes(mChars, 1);
-          if (m.capturedAt && m.capturedAt >= latestCapturedAt) {
-            latestCapturedAt = m.capturedAt;
-            lastMsgId = m.messageId;
           }
-        }
-
-        // Add memory contribution
-        const mem = await reqPromise(memStore.get(conversationId));
-        if (mem && mem.compactSummary) {
-          const memChars = mem.compactSummary.length;
-          exactChars += memChars;
-          estimatedBytes += estimateSizeBytes(memChars, 1);
-        }
-
-        conv.messageCount = exactMsgCount;
-        conv.totalCharacterCount = exactChars;
-        conv.estimatedSizeBytes = estimatedBytes;
-        conv.lastActivityAt = Math.max(conv.lastActivityAt || 0, latestCapturedAt);
-        if (lastMsgId) conv.lastCapturedMessageId = lastMsgId;
-
-        await reqPromise(convStore.put(conv));
-        return conv;
+        };
       });
     }
 
@@ -897,6 +990,7 @@
       computeContentHash,
       estimateSizeBytes,
       StorageError,
+      RECORD_METADATA_OVERHEAD_BYTES,
       STORES,
       DB_NAME,
       DB_VERSION
@@ -909,6 +1003,7 @@
     DB_VERSION,
     STORES,
     StorageError,
+    RECORD_METADATA_OVERHEAD_BYTES,
     computeContentHash,
     estimateSizeBytes,
     createStorageEngine
