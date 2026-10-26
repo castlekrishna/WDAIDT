@@ -280,6 +280,56 @@ test('summarizer: concurrency check prevents stale asynchronous response from ov
   assert.ok(!finalMem.compactSummary.includes('Slow summary that resolved late'));
 });
 
+test('summarizer: falls back to chrome.storage.local credentials when apiKey is not supplied in options', async () => {
+  const idb = createMockIndexedDB();
+  const storage = WDAIDT_DB.createStorageEngine({ indexedDB: idb, name: 'test_sum_storage_fallback' });
+
+  await storage.createConversation({ conversationId: 'c_storage_fallback', completenessStatus: 'complete' });
+  await storage.createMessage({ messageId: 'm1', conversationId: 'c_storage_fallback', role: 'user', turnSequence: 0, content: 'Fallback prompt' });
+  await storage.createMessage({ messageId: 'm2', conversationId: 'c_storage_fallback', role: 'assistant', turnSequence: 1, content: 'Fallback answer' });
+
+  let capturedApiKey = null;
+  const mockFetch = async (url, opts) => {
+    capturedApiKey = opts.headers['x-goog-api-key'];
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [{
+              text: 'Goal: Test storage fallback\nFacts: Stored key used\nConstraints: None\nDecisions: Done\nUnresolved: None\nNext Steps: None'
+            }]
+          }
+        }]
+      })
+    };
+  };
+
+  const originalChrome = globalThis.chrome;
+  globalThis.chrome = {
+    storage: {
+      local: {
+        get: async (keys) => ({
+          wdaidt_gemini_api_key: 'key-from-storage-abc',
+          wdaidt_mock_mode: false
+        })
+      }
+    }
+  };
+
+  try {
+    const res = await summarizeConversation(storage, {
+      conversationId: 'c_storage_fallback',
+      fetch: mockFetch
+    });
+    assert.equal(res.success, true);
+    assert.equal(res.status, 'ready');
+    assert.equal(capturedApiKey, 'key-from-storage-abc');
+  } finally {
+    globalThis.chrome = originalChrome;
+  }
+});
+
 test('context builder integration: handles ready, missing, and stale summaries gracefully', async () => {
   const idb = createMockIndexedDB();
   const storage = WDAIDT_DB.createStorageEngine({ indexedDB: idb, name: 'test_sum_ctx_integration' });

@@ -878,6 +878,7 @@
       const requestId = newRequestId();
       latestRequestId = requestId;
       await analyzeCapture(normalizedCap, requestId, filteredContext);
+      maybeTriggerSummarization(cap.tabId);
     } catch (e) {
       if (e && e.stage === 'capture') {
         logEvent('capture_error', { code: (e && e.code) || 'UNKNOWN' });
@@ -937,12 +938,36 @@
   }
 
 
+  async function maybeTriggerSummarization(tabId) {
+    if (!settingsState.memoryEnabled) return;
+    try {
+      let targetId = tabId;
+      if (!targetId) {
+        const tab = await getActiveTab();
+        targetId = tab && tab.id;
+      }
+      if (!targetId || typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.sendMessage) return;
+      const types = MSGS();
+      const type = types.SUMMARIZE_CONVERSATION || 'WDAIDT_SUMMARIZE_CONVERSATION';
+      chrome.tabs.sendMessage(targetId, {
+        type,
+        payload: {
+          apiKey: settingsState.geminiApiKey || undefined,
+          model: settingsState.geminiModel || undefined,
+          mockMode: settingsState.mockMode
+        }
+      }).catch(() => {});
+    } catch {
+      /* non-fatal background trigger */
+    }
+  }
+
   function autoHash(prompt, response) {
     return `${(prompt || '').length}:${(response || '').length}:` +
       `${(prompt || '').slice(-120)}|${(response || '').slice(-120)}`;
   }
 
-  async function runAuto(prompt, response, history = []) {
+  async function runAuto(prompt, response, history = [], tabId = null) {
     if (!els.autoToggle || !els.autoToggle.checked) return;
     const h = autoHash(prompt, response);
     if (h === lastAutoHash) return;
@@ -959,9 +984,10 @@
 
       const maxEx = parseValidContextWindow(settingsState.contextWindow);
       const maxContextChars = cfg.MAX_CONTEXT_TOTAL_CHARS || 30000;
-      const activeTab = await getActiveTab();
+      const activeTab = tabId ? { id: tabId } : await getActiveTab();
+      const targetTabId = activeTab && activeTab.id;
       const filteredContext = await resolveEnrichedContext(
-        activeTab && activeTab.id,
+        targetTabId,
         normPrompt,
         normResponse,
         history,
@@ -982,13 +1008,14 @@
       const requestId = newRequestId();
       latestRequestId = requestId;
       await analyzeCapture(cap, requestId, filteredContext);
+      maybeTriggerSummarization(targetTabId);
     } catch (e) {
       showError((e && e.message) || 'Analysis failed. Please try again.');
       setStatus(e && e.stage === 'capture' ? 'Capture failed.' : 'Analysis failed.');
     }
   }
 
-  function onRuntimeMessage(message) {
+  function onRuntimeMessage(message, sender) {
     if (!message || typeof message.type !== 'string') return;
     const types = MSGS();
     if (message.type !== types.AUTO_ANALYZE_TRIGGER &&
@@ -998,10 +1025,11 @@
     } catch {
       /* ignore */
     }
+    const senderTabId = (sender && sender.tab && sender.tab.id) || null;
     try {
       autoTimer = setTimeout(() => {
         autoTimer = null;
-        runAuto(message.prompt, message.response, message.history || []);
+        runAuto(message.prompt, message.response, message.history || [], senderTabId);
       }, 500);
     } catch {
       /* timers unavailable */
@@ -1645,8 +1673,8 @@
   // Global listeners
   try {
     if (chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
-      chrome.runtime.onMessage.addListener((message) => {
-        onRuntimeMessage(message);
+      chrome.runtime.onMessage.addListener((message, sender) => {
+        onRuntimeMessage(message, sender);
         return undefined;
       });
     }

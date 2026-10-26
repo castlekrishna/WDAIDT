@@ -272,18 +272,48 @@ CORE RULES:
     const generationId = `gen_${readTimestamp}_${Math.random().toString(36).slice(2, 8)}`;
 
     // ── Phase 2: Generate Summary via AI (Zero IDB transactions held open) ────
+    let apiKey = options.apiKey;
+    let mockMode = options.mockMode;
+    let model = options.model;
+
+    if (!apiKey && typeof chrome !== 'undefined' && chrome?.storage?.local?.get) {
+      try {
+        const stored = await chrome.storage.local.get([
+          'wdaidt_gemini_api_key',
+          'wdaidt_mock_mode',
+          'wdaidt_gemini_model'
+        ]);
+        if (stored) {
+          if (!apiKey && stored.wdaidt_gemini_api_key) {
+            apiKey = stored.wdaidt_gemini_api_key;
+          }
+          if (mockMode === undefined && typeof stored.wdaidt_mock_mode === 'boolean') {
+            mockMode = stored.wdaidt_mock_mode;
+          }
+          if (!model && stored.wdaidt_gemini_model) {
+            model = stored.wdaidt_gemini_model;
+          }
+        }
+      } catch {
+        /* storage read failure non-fatal */
+      }
+    }
+
     const prompt = buildIncrementalSummaryPrompt(previousSummaryText, newMessages);
     let rawSummaryText = '';
 
     try {
       if (typeof options.generateSummary === 'function') {
         rawSummaryText = await options.generateSummary(prompt, SUMMARIZER_SYSTEM_PROMPT);
-      } else if (options.mockMode || (!options.apiKey && typeof chrome === 'undefined')) {
+      } else if (mockMode || (!apiKey && typeof chrome === 'undefined')) {
         rawSummaryText = generateMockSummary(previousSummaryText, newMessages);
       } else {
+        if (!apiKey) {
+          throw new Error('Gemini API key is not configured.');
+        }
         rawSummaryText = await callGeminiForSummary({
-          apiKey: options.apiKey,
-          model: options.model,
+          apiKey,
+          model,
           prompt
         }, options.fetch);
       }

@@ -53,6 +53,9 @@
 
   function setMemoryEnabled(val) {
     memoryEnabled = !!val;
+    if (typeof autoRefresh === 'function') {
+      autoRefresh();
+    }
   }
 
   try {
@@ -1029,7 +1032,9 @@
     ) {
       autoSeq += 1;
       autoEnabled = false;
-      autoDisarm();
+      if (!isMemoryEnabled()) {
+        autoDisarm();
+      }
       sendResponse({ ok: true, auto: false });
       return true;
     }
@@ -1214,7 +1219,7 @@
 
   function autoCheck() {
     autoTimer = null;
-    if (!autoEnabled) return;
+    if (!autoEnabled && !isMemoryEnabled()) return;
     try {
       if (typeof document !== 'undefined' && document.hidden) return;
     } catch {
@@ -1226,6 +1231,7 @@
     } catch {
       return;
     }
+    if (!autoEnabled) return;
     if (!r || !r.onChatGPT || !r.prompt || !r.response || !r.paired) return;
     const h = snapshotHash(r);
     if (h === lastNotifiedHash) return;
@@ -1249,7 +1255,7 @@
   }
 
   function autoSchedule() {
-    if (!autoEnabled) return;
+    if (!autoEnabled && !isMemoryEnabled()) return;
     try {
       if (autoTimer) clearTimeout(autoTimer);
       autoTimer = setTimeout(autoCheck, AUTO_DEBOUNCE_MS);
@@ -1311,7 +1317,7 @@
     }
     if (mine !== autoSeq) return; // superseded by newer ON/OFF/refresh
     autoEnabled = on;
-    if (on) {
+    if (on || isMemoryEnabled()) {
       autoArm();
       autoSchedule();
     } else {
