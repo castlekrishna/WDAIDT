@@ -226,13 +226,13 @@
       if (!el.closest) return false;
       return !!el.closest(
         'textarea,[contenteditable="true"],[data-testid*="composer"],form[data-testid*="composer"],' +
-          'header,[data-testid*="header"],[data-testid*="app-shell"],nav,aside,footer,[role="dialog"],[role="navigation"],' +
+          'header,[data-testid*="header"],footer,[role="dialog"],' +
           '[role="menu"],[role="menuitem"],[aria-hidden="true"],' +
-          '[role="alert"],[role="log"],[role="tooltip"],' +
+          '[role="alert"],[role="tooltip"],' +
           '[role="marquee"],[role="timer"],[aria-live="assertive"],' +
           '[id*="Dnd"],[id*="dnd"],[class*="dnd"],' +
-          '#sidebar,[id*="sidebar"],[class*="sidebar"],[data-testid*="sidebar"],' +
-          '[aria-label*="Chat history"],[aria-label*="chat history"],' +
+          'nav,aside,#sidebar,[class~="sidebar"],[data-testid="sidebar"],' +
+          '[aria-label*="Chat history" i],[aria-label*="chat history" i],' +
           '.sr-only,[class*="sr-only"],[class*="visually-hidden"],' +
           '[hidden],[inert]'
       );
@@ -249,7 +249,7 @@
     try {
       if (!el || !el.closest) return false;
       return !!el.closest(
-        '[aria-live],[role="status"],[role="alert"],[role="log"]'
+        '[aria-live="assertive"],[role="status"],[role="alert"]'
       );
     } catch {
       return false;
@@ -258,7 +258,15 @@
 
   function readRole(el) {
     try {
-      const attrs = ['data-message-author-role', 'data-author-role', 'data-role'];
+      const attrs = [
+        'data-message-author-role',
+        'data-author-role',
+        'data-role',
+        'data-turn',
+        'data-message-role',
+        'data-sender',
+        'data-author'
+      ];
       for (const a of attrs) {
         const v = el.getAttribute ? el.getAttribute(a) : null;
         if (v == null) continue;
@@ -266,6 +274,12 @@
         if (r === 'user' || r === 'human') return 'user';
         if (r === 'assistant' || r === 'ai' || r === 'model') return 'assistant';
         if (r === 'system' || r === 'tool') return r;
+      }
+      const testid = (el.getAttribute ? el.getAttribute('data-testid') : '') || '';
+      if (testid) {
+        const tid = testid.toLowerCase();
+        if (tid.includes('user-turn') || tid.includes('user-message')) return 'user';
+        if (tid.includes('assistant-turn') || tid.includes('assistant-message') || tid.includes('agent-turn')) return 'assistant';
       }
     } catch {
       /* ignore */
@@ -287,6 +301,8 @@
           label =
             ((b.getAttribute && b.getAttribute('aria-label')) || '') +
             ' ' +
+            ((b.getAttribute && b.getAttribute('title')) || '') +
+            ' ' +
             (b.textContent || '');
         } catch {
           label = '';
@@ -298,6 +314,7 @@
           label.includes('good response') ||
           label.includes('bad response') ||
           label.includes('read aloud') ||
+          label.includes('share') ||
           (label.includes('like') && !label.includes('dislike'))
         ) {
           asstScore += 1;
@@ -398,7 +415,10 @@
 
   // Strategy 1: explicit role attributes, leaf-most containers only.
   function findRoleNodes(root) {
-    const els = deepQuery('[data-message-author-role],[data-author-role]', root);
+    const els = deepQuery(
+      '[data-message-author-role],[data-author-role],[data-role],[data-turn="user"],[data-turn="assistant"],[data-message-role]',
+      root
+    );
     const out = [];
     for (const el of els) {
       if (insideExcluded(el) || !isRendered(el)) continue;
@@ -459,7 +479,7 @@
   // Strategy 3: conversation-turn wrappers.
   function findTurnNodes(root) {
     const els = deepQuery(
-      '[data-testid^="conversation-turn"],[data-testid*="conversation-turn"]',
+      '[data-testid^="conversation-turn"],[data-testid*="conversation-turn"],[data-turn-id],[data-turn-id-container],[data-turn]',
       root
     );
     const out = pairTurnWrappers(els);
@@ -479,6 +499,7 @@
   function findModernNodes(root) {
     const rawEls = deepQuery(
       '[data-message-author-role="user"], [data-message-author-role="assistant"], ' +
+        '[data-turn="user"], [data-turn="assistant"], ' +
         '[class*="agent-turn"], [class*="user-turn"], ' +
         '.markdown, .prose, [class*="markdown"], [class*="prose"], ' +
         'div.whitespace-pre-wrap, .whitespace-pre-wrap, [class*="whitespace-pre-wrap"]',
@@ -567,6 +588,46 @@
     return out;
   }
 
+  // Strategy: accessible-turns — ChatGPT structures conversation turns for assistive tech
+  // with explicit "You said:" and "ChatGPT said:" markers.
+  function findAccessibleTurns(root) {
+    const scope = root || chatScope() || (typeof document !== 'undefined' ? document : null);
+    if (!scope) return [];
+
+    let text = '';
+    try {
+      text = visibleText(scope);
+    } catch {
+      text = '';
+    }
+    if (!text || !/(?:You said|User said|You):/i.test(text) || !/(?:ChatGPT said|ChatGPT):/i.test(text)) {
+      return [];
+    }
+
+    const pattern = /(?:^|\n)\s*(?:You said|User said|You):\s*\n*([\s\S]*?)\s*(?:^|\n)\s*(?:ChatGPT said|ChatGPT|Assistant said):\s*\n*([\s\S]*?)(?=(?:\n\s*(?:You said|User said|You):)|$)/gi;
+    const out = [];
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      let prompt = norm(match[1]);
+      let response = norm(match[2]);
+
+      // Strip trailing disclaimers and chrome from the response
+      response = response.replace(/\n\s*ChatGPT can make mistakes[\s\S]*$/i, '').trim();
+      response = response.replace(/\n\s*Latest response[\s\S]*$/i, '').trim();
+      response = response.replace(/\n\s*Think\s*$/i, '').trim();
+
+      if (prompt) {
+        out.push({ role: 'user', text: prompt });
+      }
+      if (response) {
+        out.push({ role: 'assistant', text: response });
+      }
+    }
+
+    debug(`accessible-turns: ${out.length} nodes`);
+    return out;
+  }
+
   function isBlockTag(el) {
     try {
       return /^(P|LI|H1|H2|H3|H4|H5|H6|SECTION|DIV|BLOCKQUOTE)$/.test(
@@ -634,7 +695,7 @@
           !isFixed(node)
         ) {
           const text = visibleText(node);
-          if (text && text.length >= 24) found.push({ el: node, text });
+          if (text && text.length >= 1) found.push({ el: node, text });
         }
       } catch {
         /* ignore */
@@ -646,20 +707,27 @@
     } catch {
       return [];
     }
-    // Keep leaf-most blocks, BUT preserve markdown containers intact (do not fragment into <p>s).
+    // Keep leaf-most blocks, BUT preserve markdown containers and assistant containers intact.
     const leaf = found.filter((b) => {
       const isMd =
         (b.el.className && typeof b.el.className === 'string' && b.el.className.includes('markdown')) ||
         (b.el.matches && b.el.matches('.markdown, [class*="markdown"]'));
-      if (isMd) return true;
-      if (b.el.closest && b.el.closest('.markdown, [class*="markdown"]')) return false;
+      const isAsst = classifyByAffordance(b.el) === 'assistant';
+      if (isMd || isAsst) return true;
+      if (
+        b.el.closest &&
+        (b.el.closest('.markdown, [class*="markdown"]') ||
+          found.some((other) => other !== b && classifyByAffordance(other.el) === 'assistant' && containsNode(other.el, b.el)))
+      ) {
+        return false;
+      }
       return !found.some(
-        (c) => c !== b && c.text.length > 20 && containsNode(b.el, c.el)
+        (c) => c !== b && containsNode(b.el, c.el)
       );
     });
     // Require at least one substantial (assistant-length) block, otherwise
     // this is chrome text, not a conversation.
-    if (!leaf.some((b) => b.text.length >= 60)) {
+    if (!leaf.some((b) => b.text.length >= 30)) {
       debug('content-blocks: no substantial block, discarded');
       return [];
     }
@@ -691,6 +759,19 @@
     if (out.length) {
       const check = pairLatest(out);
       if (!check.paired || !check.prompt || !check.response) {
+        // Fallback recovery: if intermediate blocks broke alternation, pair the last assistant with preceding block
+        const assts = out.filter((n) => n.role === 'assistant');
+        if (assts.length > 0) {
+          const lastAsstNode = assts[assts.length - 1];
+          const lastAsstIdx = out.lastIndexOf(lastAsstNode);
+          for (let i = lastAsstIdx - 1; i >= 0; i--) {
+            if (out[i].text && out[i].text !== lastAsstNode.text) {
+              out[i].role = 'user';
+              debug('content-blocks: recovered pair from preceding block');
+              return out.slice(i, lastAsstIdx + 1);
+            }
+          }
+        }
         debug('content-blocks: no complete pair, discarded');
         return [];
       }
@@ -795,8 +876,8 @@
     try {
       fp.articles = deepQuery('article', docRoot).length;
       fp.mains = (typeof document !== 'undefined' && document.querySelectorAll) ? document.querySelectorAll('main').length : 0;
-      fp.roleAttr = deepQuery('[data-message-author-role]', docRoot).length;
-      fp.messageId = deepQuery('[data-message-id]', docRoot).length;
+      fp.roleAttr = deepQuery('[data-message-author-role],[data-author-role],[data-turn],[data-role]', docRoot).length;
+      fp.messageId = deepQuery('[data-message-id],[data-turn-id],[data-turn-id-container]', docRoot).length;
       const withTestid = deepQuery('[data-testid]', docRoot);
       const seen = {};
       for (const el of withTestid) {
@@ -901,6 +982,7 @@
     const root = chatScope();
     const attempts = [
       ['role-attributes', () => findRoleNodes(root)],
+      ['accessible-turns', () => findAccessibleTurns(root)],
       ['message-id', () => findMessageIdNodes(root)],
       ['conversation-turns', () => findTurnNodes(root)],
       ['articles', () => findArticleNodes(root)],
@@ -944,6 +1026,7 @@
     if (!r.paired && root && typeof document !== 'undefined' && root !== document) {
       const docRoot = document;
       for (const [name, fn] of [
+        ['accessible-turns', () => findAccessibleTurns(docRoot)],
         ['modern-turns', () => findModernNodes(docRoot)],
         ['conversation-turns', () => findTurnNodes(docRoot)],
         ['role-attributes', () => findRoleNodes(docRoot)],

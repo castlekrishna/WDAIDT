@@ -858,3 +858,122 @@ test('modern ChatGPT UI: feedback survey ("Is this conversation helpful so far?"
   assert.ok(!res.prompt.includes('helpful so far'));
   assert.ok(!res.prompt.includes('Your mission'));
 });
+
+
+test('modern ChatGPT UI: hook-less minimal conversation with short prompt ("hi") and affordance-only reply is captured', async () => {
+  // Simulates modern ChatGPT without legacy attributes (role=0, mid=0, turns=0, articles=0)
+  const sidebar = makeEl({
+    attrs: { class: 'sidebar' },
+    children: [
+      makeEl({ attrs: { class: 'item' }, text: 'History Item' }),
+    ],
+  });
+
+  const userBlock = makeEl({
+    tag: 'div',
+    text: 'hi',
+  });
+
+  const copyButton = makeEl({
+    tag: 'button',
+    attrs: { 'aria-label': 'Copy' },
+    text: '',
+  });
+
+  const asstBlock = makeEl({
+    tag: 'div',
+    text: "Hey Krishna! What's cooking, bro? 😷\nWhat are we building, learning, or fixing today?",
+    children: [copyButton],
+  });
+
+  const disclaimer = makeEl({
+    tag: 'div',
+    attrs: { class: 'text-xs text-center' },
+    text: 'ChatGPT can make mistakes. Check important info.',
+  });
+
+  const main = makeEl({
+    tag: 'main',
+    children: [userBlock, asstBlock, disclaimer],
+  });
+
+  const { send } = loadScript({ elements: [sidebar, main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'hi');
+  assert.match(res.response, /Hey Krishna! What's cooking, bro?/);
+  assert.ok(!res.response.includes('ChatGPT can make mistakes'));
+});
+
+
+test('modern ChatGPT UI: multi-paragraph assistant reply without markdown classes is captured as a single turn', async () => {
+  const userBlock = makeEl({
+    tag: 'div',
+    attrs: { class: 'user-message' },
+    text: 'hi',
+  });
+
+  const p1 = makeEl({
+    tag: 'p',
+    text: "Hey Krishna! What's cooking, bro? 😷",
+  });
+
+  const p2 = makeEl({
+    tag: 'p',
+    text: 'What are we building, learning, or fixing today?',
+  });
+
+  const copyBtn = makeEl({
+    tag: 'button',
+    attrs: { 'aria-label': 'Copy' },
+  });
+
+  const toolbar = makeEl({
+    tag: 'div',
+    children: [copyBtn],
+  });
+
+  const asstTurn = makeEl({
+    tag: 'div',
+    children: [p1, p2, toolbar],
+  });
+
+  const main = makeEl({
+    tag: 'main',
+    children: [userBlock, asstTurn],
+  });
+
+  const { send } = loadScript({ elements: [main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.prompt, 'hi');
+  assert.match(res.response, /Hey Krishna/);
+  assert.match(res.response, /What are we building/);
+});
+
+
+test('modern ChatGPT UI: accessibility transcript with "You said:" and "ChatGPT said:" captures multi-turn cleanly', async () => {
+  const main = makeEl({
+    tag: 'main',
+    inner: `You said:\nhi\nChatGPT said:\nHey Krishna! What's cooking, bro? 😷\nWhat are we building, learning, or fixing today?\n\nYou said:\nhello\nChatGPT said:\nHelloooo bro! 😄 What's up? How's your day going?\n\nChatGPT can make mistakes. Check important info.\nLatest response\nThink`,
+  });
+
+  const { send } = loadScript({ elements: [main] });
+  const res = await send({ type: 'WDAIDT_GET_LATEST' });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.paired, true);
+  assert.equal(res.strategy, 'accessible-turns');
+  assert.equal(res.prompt, 'hello');
+  assert.match(res.response, /Helloooo bro!/);
+  assert.ok(!res.response.includes('ChatGPT can make mistakes'));
+  assert.ok(!res.response.includes('Latest response'));
+  assert.ok(!res.response.includes('Think'));
+  assert.equal(res.history.length, 1);
+  assert.equal(res.history[0].prompt, 'hi');
+  assert.match(res.history[0].response, /Hey Krishna!/);
+});
