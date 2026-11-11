@@ -3,7 +3,19 @@
 > **Ever wonder why ChatGPT answered your prompt the way it did?**  
 > WDAIDT is a browser extension that lives in your Chrome side panel, providing real-time, evidence-based diagnostic explanations and ready-to-use follow-up prompts for your ChatGPT conversations.
 
-[Repository](https://github.com/castlekrishna/WDAIDT) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Release Notes (V3.0.0-beta.2)](docs/V3.0.0-ALPHA.1-ARCHITECTURE.md) · [Release Notes (V2.0.0)](docs/V2.0.0.md) · [Release Notes (V1.0.0)](docs/V1.0.0.md)
+[Repository](https://github.com/castlekrishna/WDAIDT) · [Video Demos](#video-demos--walkthroughs) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Release Notes (V3.0.0-beta.2)](docs/V3.0.0-ALPHA.1-ARCHITECTURE.md) · [Release Notes (V2.0.0)](docs/V2.0.0.md) · [Release Notes (V1.0.0)](docs/V1.0.0.md)
+
+---
+
+## Video Demos & Walkthroughs
+
+Explore **Why Did AI Do That?** in action through these video overviews:
+
+| Video | Description | Link |
+| :--- | :--- | :--- |
+| **🎙️ AI Voiceover Demo** | Quick, high-impact demonstration of WDAIDT diagnostic capabilities and prompt steering with AI narration. | [Watch Video (YouTube)](https://youtu.be/PkTf6wXCVjs?si=e75Nl9cRgq27DZ8T) |
+| **👨‍💻 Personal Walkthrough by Me** | In-depth creator demonstration covering real-world conversation debugging, live DOM capture, and side panel customization. | [Watch Video (YouTube)](https://youtu.be/NNbIDOJud2U?si=2cCUR82_YUr6k4Dg) |
+| **🛠️ Setup Guide** | Step-by-step setup tutorial showing how to download, load the unpacked extension in Chrome, and configure Gemini in under 1 minute. | [Watch Video (YouTube)](https://youtu.be/1--uROiTpoQ) |
 
 ---
 
@@ -73,7 +85,8 @@ All preferences persist automatically across browser sessions in `chrome.storage
 
 ## Quick Start & Installation
 
-Get up and running in under **1 minute** — no Python, local server, or terminal required!
+Get up and running in under **1 minute** — no Python, local server, or terminal required!  
+*(Prefer video? Watch the [1-Minute Setup Guide](https://youtu.be/1--uROiTpoQ))*
 
 ### 1. Download the Extension
 
