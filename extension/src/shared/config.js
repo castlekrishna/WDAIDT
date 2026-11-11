@@ -1,5 +1,5 @@
 /* Single source of truth for extension configuration and API agreement limits.
- * WDAIDT V2.0.1 operates as a self-contained extension with direct Gemini API integration.
+ * WDAIDT V3.0.0-beta.2 operates as a self-contained extension with direct Gemini API integration and local conversation memory.
  */
 
 const WDAIDT_CONFIG = Object.freeze({

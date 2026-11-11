@@ -2,6 +2,18 @@
 
 All notable changes to Why Did AI Do That? are documented here. Versions are listed from newest to oldest.
 
+## V3.0.0-beta.2 — Conversation Memory & DOM Extraction Stabilization
+
+WDAIDT V3.0.0-beta.2 introduces persistent local conversation memory, incremental background summarization, context-window enrichment, and a resilient accessibility-based DOM capture engine:
+
+- **Local IndexedDB Memory Engine (`src/shared/db.js`)**: Full transactional storage engine using native IndexedDB (`wdaidt_memory`, v1) with stores for `conversations`, `messages`, `summaries`, and `meta`. Tracks storage accounting, conversation identity reconciliation across URL changes, and transactional consistency.
+- **Incremental Background Summarizer (`src/shared/summarizer.js`)**: Automatically computes rolling summaries of earlier conversation exchanges using Google Gemini (with offline fallback). Checkpoints turn indexes to summarize only newly settled turns while marking summaries stale upon detected message edits.
+- **Multi-Turn Context Builder (`src/shared/context_builder.js`)**: Assembles rich multi-turn context (prior exchanges and rolling summaries) within strict token budgets for evidence-based diagnosis.
+- **Automated Storage Retention (`src/shared/retention.js`)**: Configurable retention policies (default: 30 days) and storage budgets (default: 20 MB) with FIFO/LRU cleanup and active-conversation protection.
+- **ChatGPT Modern DOM Extraction (`src/content/chatgpt.js`)**: Added high-priority `accessible-turns` strategy utilizing ChatGPT's native `You said:` and `ChatGPT said:` accessibility markers. Added support for short prompts (e.g. `"hi"`), multi-paragraph replies without `.markdown` classes, and streamlined ARIA live-region filtering.
+- **Obsidian Memory Settings & Controls**: Integrated Memory toggle, retention duration settings, storage budget limits, and 1-click memory purge with live byte accounting.
+- **Automated Regression Baseline**: All 222 automated unit and integration tests passing across 20 test suites with 0 failures.
+
 ## V2.1.0 — Legacy Config Cleanup & Gemini Integration Hardening
 
 WDAIDT V2.1.0 hardens the direct Gemini API integration and cleans up legacy backend references following the retirement of the local Python service:

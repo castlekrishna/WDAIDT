@@ -3,7 +3,7 @@
 > **Ever wonder why ChatGPT answered your prompt the way it did?**  
 > WDAIDT is a browser extension that lives in your Chrome side panel, providing real-time, evidence-based diagnostic explanations and ready-to-use follow-up prompts for your ChatGPT conversations.
 
-[Repository](https://github.com/castlekrishna/WDAIDT) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Release Notes (V2.0.0)](docs/V2.0.0.md) · [Release Notes (V1.0.0)](docs/V1.0.0.md)
+[Repository](https://github.com/castlekrishna/WDAIDT) · [Submission Audit](docs/SUBMISSION_READINESS.md) · [Changelog](docs/CHANGELOG.md) · [Release Notes (V3.0.0-beta.2)](docs/V3.0.0-ALPHA.1-ARCHITECTURE.md) · [Release Notes (V2.0.0)](docs/V2.0.0.md) · [Release Notes (V1.0.0)](docs/V1.0.0.md)
 
 ---
 
@@ -94,7 +94,7 @@ Download and extract the repository ZIP: [Download WDAIDT ZIP](https://github.co
 2. Turn ON **Developer mode** (toggle in the upper-right corner).
 3. Click **Load unpacked** (button in the upper-left corner).
 4. Select the `extension/` directory inside your cloned or extracted repository.
-5. That's it! **Why Did AI Do That?** is now installed (version 2.1.0).
+5. That's it! **Why Did AI Do That?** is now installed (version 3.0.0-beta.2).
 
 ---
 
@@ -164,14 +164,15 @@ flowchart TD
 
 ## Technology Stack
 
-### Chrome Extension (V2.1.0 Standalone Runtime)
+### Chrome Extension (V3.0.0-beta.2 Runtime)
 - **Platform**: Chrome Manifest V3
-- **APIs**: Chrome Side Panel API (`chrome.sidePanel`), Chrome Storage API (`chrome.storage.local`), Chrome Scripting & Tabs
+- **APIs**: Chrome Side Panel API (`chrome.sidePanel`), Chrome Storage API (`chrome.storage.local`), IndexedDB API (`wdaidt_memory`), Chrome Scripting & Tabs
 - **Frontend & Pipeline**: Vanilla JavaScript (ES2022), semantic HTML5, modern CSS3 custom properties
+- **Conversation Memory**: Native IndexedDB storage engine (`conversations`, `messages`, `summaries`, `meta`), incremental background summarizer, automated storage retention
 - **Direct AI Integration**: Google Generative Language REST API (`gemini-3.5-flash-lite`) via HTTPS header authentication
 - **Offline Mock Engine**: In-memory deterministic mock analyzer generating valid 9-block documents
 - **Security**: Pure DOM element construction (`textContent`), zero `innerHTML` usage, Content Security Policy compliant
-- **Testing**: Node.js built-in test runner (`node:test`, `node:assert`) — 166 passing automated tests
+- **Testing**: Node.js built-in test runner (`node:test`, `node:assert`) — 222 passing automated tests
 
 ---
 
@@ -237,22 +238,25 @@ WDAIDT/
 
 ## Testing & Verification
 
-WDAIDT maintains a comprehensive 166-test automated regression baseline using the built-in Node.js test runner:
+WDAIDT maintains a comprehensive 222-test automated regression baseline using the built-in Node.js test runner:
 
 ```bash
 node --test tests/extension/*.test.js
 ```
 
 ### Coverage Areas
-- **DOM Extraction**: Multi-strategy fallback hierarchy, Shadow DOM traversal, SPA client-side navigation.
+- **DOM Extraction**: Accessible-turns transcript parsing, multi-strategy fallback hierarchy, Shadow DOM traversal, SPA client-side navigation.
 - **Stream Monitoring**: MutationObserver debounce watcher, settled turn detection, streaming suppression.
+- **Conversation Memory**: IndexedDB CRUD operations, schema lifecycle, native transaction completion, automated storage retention, and byte accounting.
+- **Background Summarizer**: Incremental rolling summarization, turn checkpointing, and edit-invalidation.
+- **Context Builder**: Multi-turn context window assembly, token-budget enforcement, and historical exchange ordering.
 - **Prompt Composition & Epistemic Boundaries**: Style guidance, depth presets, passive XML interaction isolation.
 - **Document & Schema Validation**: Bounds checking, 9-block discriminated union parsing, code fence stripping.
 - **Gemini REST Client**: HTTPS header authentication, candidate model fallback (404/503), error sanitization.
 - **Offline Mock Engine**: Zero-network deterministic mock generation matching all document types.
-- **Settings & UI State**: Accordion drawers, status indicator synchronization, `chrome.storage.local` persistence.
+- **Settings & UI State**: Memory management drawer, storage retention controls, status indicator synchronization, `chrome.storage.local` persistence.
 
-- **Observed Automated Test Result**: **166 passed**, 0 failed, 0 skipped (~1.3 seconds runtime).
+- **Observed Automated Test Result**: **222 passed**, 0 failed, 0 skipped (~1.2 seconds runtime).
 - **Live Mode Verification Status**: Automated tests execute using offline mock fixtures and mock network fetch functions. Live Gemini mode requires a user-supplied API key at runtime and was not verified against live external Google API endpoints during automated runs.
 
 ---
